@@ -1,0 +1,13 @@
+:root {
+            --bg: #f4f6fb;
+            --card: #fff;
+            --ink: #172033;
+            --muted: #778198;
+            --line: #e8ebf2;
+            --purple: #6857e8;
+            --purple2: #eeeaff;
+            --green: #16a579;
+            --orange: #f3a64a;
+            --nav: #171b31;
+            --shadow: 0 12px 35px rgba(28, 35, 67, .07)
+        }
