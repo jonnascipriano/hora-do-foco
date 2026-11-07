@@ -1,13 +1,13 @@
-import Button from "./Button"
+import { useNavigate } from "react-router-dom";
+import Button from "./Button";
 
-const studyBars = ["32%", "58%", "43%", "78%", "62%", "91%", "68%"]
+const studyBars = ["32%", "58%", "43%", "78%", "62%", "91%", "68%"];
 
 const features = [
     {
         icon: "◷",
         title: "Pomodoro inteligente",
-        description:
-            "Ciclos de 25 minutos de foco e 5 minutos de pausa. Cada sessão concluída soma automaticamente ao seu histórico.",
+        description: "Ciclos de 25 minutos de foco e 5 minutos de pausa. Cada sessão concluída soma automaticamente ao seu histórico.",
     },
     {
         icon: "◷",
@@ -18,18 +18,17 @@ const features = [
     {
         icon: "▦",
         title: "Diário de estudos",
-        description:
-            "Escolha qualquer dia até hoje, registre anotações e guarde PDFs, fotos e outros arquivos importantes.",
+        description: "Escolha qualquer dia até hoje, registre anotações e guarde PDFs, fotos e outros arquivos importantes.",
     },
     {
-        icon: '◷',
-        title: 'Contador livre',
-        description:
-            "Função que começa contabilizar as horas estudadas a partir de um clique.",
-    }
-]
+        icon: "◷",
+        title: "Contador livre",
+        description: "Função que começa contabilizar as horas estudadas a partir de um clique.",
+    },
+];
 
-export default function Hero(){
+export default function Hero() {
+    const navigate = useNavigate(); // <-- Inicia o hook aqui também
     return (
         <>
             <section className="mx-auto grid max-w-5xl items-center gap-12 py-12 md:grid-cols-2 md:gap-16 md:py-16">
@@ -39,32 +38,30 @@ export default function Hero(){
                     </span>
                     <h1 className="mt-5 text-4xl leading-[1.08] font-extrabold tracking-tight text-(--ink) sm:text-5xl">
                         Estude com foco.
-                        <span className="block text-(--purple)">
-                            Acompanhe sua evolução.
-                        </span>
+                        <span className="block text-(--purple)">Acompanhe sua evolução.</span>
                     </h1>
                     <p className="mt-4 max-w-lg text-sm leading-6 text-(--muted) sm:text-base">
-                        Organize suas matérias, mantenha a consistência com Pomodoro e veja cada hora de dedicação virar progresso rumo à aprovação.
+                        Organize suas matérias, mantenha a consistência com Pomodoro e veja cada hora de dedicação virar progresso rumo à
+                        aprovação.
                     </p>
                     <div className="mt-6 flex flex-wrap gap-3">
-                        <Button className="bg-(--purple) text-sm font-bold text-white shadow-lg shadow-purple-200 hover:-translate-y-0.5">
+                        <Button
+                            onClick={() => navigate("/login")}
+                            className="bg-(--purple) text-sm font-bold text-white shadow-lg shadow-purple-200 hover:-translate-y-0.5"
+                        >
                             Acessar minha área →
                         </Button>
                         <Button className="border border-(--line) bg-white text-sm font-bold text-(--ink) hover:bg-(--purple2)">
                             Conhecer recursos
                         </Button>
                     </div>
-                    <p className="mt-3 text-[11px] text-(--muted)">
-                        ✦ Um espaço único para sua preparação.
-                    </p>
+                    <p className="mt-3 text-[11px] text-(--muted)">✦ Um espaço único para sua preparação.</p>
                 </div>
 
                 <div className="rounded-3xl border border-white bg-white rotate-3 p-4 shadow-[0_24px_60px_rgba(28,35,67,0.12)] sm:p-5">
                     <div className="flex items-center justify-between">
                         <h2 className="text-sm font-extrabold text-(--ink)">Visão geral</h2>
-                        <span className="text-[10px] font-bold uppercase tracking-wide text-(--muted)">
-                            Prévia do painel
-                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-(--muted)">Prévia do painel</span>
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
@@ -105,32 +102,23 @@ export default function Hero(){
 
             <section className="mx-auto max-w-5xl pb-14 pt-2 sm:pb-16">
                 <div className="text-center">
-                    <h2 className="text-2xl font-extrabold tracking-tight text-(--ink)">
-                        Tudo o que você precisa para evoluir
-                    </h2>
+                    <h2 className="text-2xl font-extrabold tracking-tight text-(--ink)">Tudo o que você precisa para evoluir</h2>
                     <p className="mt-3 text-xs leading-5 text-(--muted) sm:text-sm">
                         Ferramentas simples para transformar intenção em constância.
                     </p>
                 </div>
                 <div className="mt-6 grid gap-3 md:grid-cols-4">
                     {features.map((feature) => (
-                        <article
-                            key={feature.title}
-                            className="rounded-2xl border border-(--line) bg-white p-4"
-                        >
+                        <article key={feature.title} className="rounded-2xl border border-(--line) bg-white p-4">
                             <span className="grid h-9 w-9 place-items-center rounded-xl bg-(--purple2) text-sm text-(--purple)">
                                 {feature.icon}
                             </span>
-                            <h3 className="mt-3 text-sm font-bold text-(--ink)">
-                                {feature.title}
-                            </h3>
-                            <p className="mt-1 text-xs leading-[1.55] text-(--muted)">
-                                {feature.description}
-                            </p>
+                            <h3 className="mt-3 text-sm font-bold text-(--ink)">{feature.title}</h3>
+                            <p className="mt-1 text-xs leading-[1.55] text-(--muted)">{feature.description}</p>
                         </article>
                     ))}
                 </div>
             </section>
         </>
-    )
+    );
 }

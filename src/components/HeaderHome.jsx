@@ -1,6 +1,8 @@
-import Button from "./Button"
+import { useNavigate } from "react-router-dom";
+import Button from "./Button";
 
 export default function HeaderHome(){
+    const navigate = useNavigate(); // <-- Inicia o hook de navegação
     return(
         <header className="flex flex-row flex-wrap justify-between items-center m-auto max-w-6xl h-16 text-sm">
             <div className="font-black p-3 text-xl">
@@ -12,9 +14,8 @@ export default function HeaderHome(){
             </div>
 
             <nav className="flex gap-3 font-bold">
-                <Button className="text-(--ink) bg-white border-1-(--line) hover:-translate-y-0.5">Entrar</Button>
-                <Button className="text-(--line) bg-(--purple) hover:-translate-y-0.5">Começar agora</Button>
-            </nav>
+                <Button onClick={() => navigate('/login')} className="text-(--ink) bg-white border-1-(--line) hover:-translate-y-0.5">Entrar</Button>
+                <Button onClick={() => navigate('/login')} className="text-white bg-(--purple) hover:-translate-y-0.5">Começar agora</Button></nav>
         </header>
     )
 }
