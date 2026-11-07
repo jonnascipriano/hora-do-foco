@@ -12,8 +12,8 @@ export default function HeaderHome(){
             </div>
 
             <nav className="flex gap-3 font-bold">
-                <Button className="text-(--ink) bg-white border-1-(--line)">Entrar</Button>
-                <Button className="text-(--line) bg-(--purple)">Começar agora</Button>
+                <Button className="text-(--ink) bg-white border-1-(--line) hover:-translate-y-0.5">Entrar</Button>
+                <Button className="text-(--line) bg-(--purple) hover:-translate-y-0.5">Começar agora</Button>
             </nav>
         </header>
     )
