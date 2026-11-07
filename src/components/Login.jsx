@@ -27,7 +27,7 @@ export default function Login() {
             } else {
                 await signInWithEmailAndPassword(auth, email.trim(), password);
             }
-            navigate("/");
+            navigate("/dashboard");
         } catch (err) {
             switch (err.code) {
                 case "auth/invalid-credential":
@@ -65,7 +65,7 @@ export default function Login() {
 
         try {
             await signInWithPopup(auth, googleProvider);
-            navigate("/");
+            navigate("/dashboard");
         } catch (err) {
             switch (err.code) {
                 case "auth/popup-closed-by-user":
