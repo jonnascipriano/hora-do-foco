@@ -2,6 +2,9 @@ import HeaderHome from "./HeaderHome"
 
 export default function Home(){
     return(
-        <HeaderHome/>
+        <main className="landing px-6">
+
+            <HeaderHome/>
+        </main>
     )
 }
