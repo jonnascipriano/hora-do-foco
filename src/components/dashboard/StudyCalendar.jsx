@@ -30,6 +30,7 @@ export default function StudyCalendar() {
     const [attachments, setAttachments] = useState([]);
     const [loadedKey, setLoadedKey] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(null);
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
     const selectedKey = dateKey(selectedDate);
@@ -97,13 +98,21 @@ export default function StudyCalendar() {
         }
 
         setIsSaving(true);
+        setUploadProgress({ fileName: files[0].name, percent: 0 });
         setError("");
         setNotice("");
         try {
             const uploaded = [];
             for (const file of files) {
-                uploaded.push(await uploadCalendarAttachment(auth.currentUser.uid, selectedKey, file));
+                setUploadProgress({ fileName: file.name, percent: 0 });
+                uploaded.push(await uploadCalendarAttachment(
+                    auth.currentUser.uid,
+                    selectedKey,
+                    file,
+                    (progress) => setUploadProgress({ fileName: file.name, percent: Math.round(progress * 100) }),
+                ));
             }
+            setUploadProgress({ fileName: null, percent: 100 });
             const nextAttachments = [...attachments, ...uploaded];
             await saveCalendarEntry(auth.currentUser.uid, selectedKey, { notes, attachments: nextAttachments });
             setAttachments(nextAttachments);
@@ -111,6 +120,7 @@ export default function StudyCalendar() {
         } catch {
             setError("Não foi possível enviar o arquivo. Confira se o Firebase Storage está ativado e suas regras foram publicadas.");
         } finally {
+            setUploadProgress(null);
             setIsSaving(false);
         }
     }
@@ -250,6 +260,13 @@ export default function StudyCalendar() {
                                         />
                                     </label>
                                 </div>
+                                {uploadProgress && (
+                                    <p role="status" className="mt-3 text-sm font-semibold text-(--purple)">
+                                        {uploadProgress.fileName
+                                            ? `Enviando ${uploadProgress.fileName}… ${uploadProgress.percent}%`
+                                            : "Salvando arquivos no diário…"}
+                                    </p>
+                                )}
                                 {attachments.length === 0 ? (
                                     <p className="mt-4 rounded-xl bg-(--bg) p-4 text-sm text-(--muted)">Nenhum arquivo adicionado neste dia.</p>
                                 ) : (

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { auth } from "../../firebase";
-import { getStudySessions } from "../../services/studyData";
+import { getAllStudySessions, getStudySessions } from "../../services/studyData";
+
+const SECONDS_PER_LEVEL = 10 * 60 * 60;
+const MAX_LEVEL = 1000;
 
 const ranges = [
     { id: "day", label: "Dia" },
@@ -43,6 +46,8 @@ function formatDuration(seconds) {
 export default function DashboardHome() {
     const [range, setRange] = useState("week");
     const [result, setResult] = useState({ range: null, sessions: [], error: "" });
+    const [refreshKey, setRefreshKey] = useState(0);
+    const [totalStudy, setTotalStudy] = useState({ seconds: 0, loading: true, error: "" });
     const isLoading = result.range !== range;
     const sessions = useMemo(
         () => isLoading ? [] : result.sessions,
@@ -67,7 +72,34 @@ export default function DashboardHome() {
             });
 
         return () => { isActive = false; };
-    }, [range]);
+    }, [range, refreshKey]);
+
+    useEffect(() => {
+        let isActive = true;
+        getAllStudySessions(auth.currentUser.uid)
+            .then((items) => {
+                if (!isActive) return;
+                setTotalStudy({
+                    seconds: items.reduce((total, session) => total + session.elapsedSeconds, 0),
+                    loading: false,
+                    error: "",
+                });
+            })
+            .catch(() => {
+                if (isActive) setTotalStudy({
+                    seconds: 0,
+                    loading: false,
+                    error: "Não foi possível carregar seu total geral de estudos.",
+                });
+            });
+        return () => { isActive = false; };
+    }, [refreshKey]);
+
+    useEffect(() => {
+        const refreshAfterSave = () => setRefreshKey((current) => current + 1);
+        window.addEventListener("study-session-saved", refreshAfterSave);
+        return () => window.removeEventListener("study-session-saved", refreshAfterSave);
+    }, []);
 
     const subjects = useMemo(() => {
         const totals = new Map();
@@ -91,6 +123,11 @@ export default function DashboardHome() {
             ? `conic-gradient(${gradient})`
             : "conic-gradient(#e8ebf2 0% 100%)",
     };
+    const currentLevel = Math.min(MAX_LEVEL, Math.floor(totalStudy.seconds / SECONDS_PER_LEVEL) + 1);
+    const levelProgressSeconds = currentLevel === MAX_LEVEL
+        ? SECONDS_PER_LEVEL
+        : totalStudy.seconds % SECONDS_PER_LEVEL;
+    const levelProgress = (levelProgressSeconds / SECONDS_PER_LEVEL) * 100;
 
     return (
         <div className="mx-auto max-w-6xl">
@@ -118,6 +155,50 @@ export default function DashboardHome() {
             </div>
 
             {error && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
+            <section className="mt-6 rounded-2xl border border-(--line) bg-white p-5 sm:p-6">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                        <p className="text-sm font-bold text-(--muted)">Contador geral</p>
+                        <h2 className="mt-1 text-2xl font-extrabold">
+                            Nível {totalStudy.loading || totalStudy.error ? "…" : currentLevel}
+                            <span className="ml-2 text-sm font-semibold text-(--muted)">/ {MAX_LEVEL}</span>
+                        </h2>
+                    </div>
+                    <p className="text-sm font-bold text-(--purple)">
+                        {totalStudy.loading
+                            ? "Carregando total…"
+                            : totalStudy.error
+                              ? "Total indisponível"
+                              : `${formatDuration(totalStudy.seconds)} estudadas no total`}
+                    </p>
+                </div>
+                {totalStudy.error ? (
+                    <p role="alert" className="mt-3 text-sm font-semibold text-red-700">{totalStudy.error}</p>
+                ) : (
+                    <>
+                        <div
+                            role="progressbar"
+                            aria-label="Progresso para o próximo nível"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={totalStudy.loading ? 0 : levelProgress}
+                            className="mt-4 h-2 overflow-hidden rounded-full bg-(--purple2)"
+                        >
+                            <div
+                                className="h-full rounded-full bg-(--purple) transition-[width]"
+                                style={{ width: `${totalStudy.loading ? 0 : levelProgress}%` }}
+                            />
+                        </div>
+                        <p className="mt-2 text-xs text-(--muted)">
+                            {totalStudy.loading
+                                ? " "
+                                : currentLevel === MAX_LEVEL
+                                  ? "Nível máximo alcançado!"
+                                  : `${formatDuration(SECONDS_PER_LEVEL - levelProgressSeconds)} para o próximo nível · 1 nível a cada 10 horas`}
+                        </p>
+                    </>
+                )}
+            </section>
 
             <section className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)]">
                 <article className="rounded-2xl border border-(--line) bg-white p-5 sm:p-6">
