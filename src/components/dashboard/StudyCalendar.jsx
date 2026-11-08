@@ -4,11 +4,52 @@ import {
     deleteCalendarAttachment,
     getCalendarEntry,
     saveCalendarEntry,
-    uploadCalendarAttachment,
 } from "../../services/studyData";
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
+
+const handleFileUpload = (file, onProgress) => new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append("arquivo", file);
+
+    const request = new XMLHttpRequest();
+    request.open("POST", "https://horadofoco.com/upload.php");
+    request.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) onProgress?.(event.loaded / event.total);
+    });
+    request.addEventListener("error", () => reject(new Error("Não foi possível conectar ao servidor de arquivos.")));
+    request.addEventListener("load", () => {
+        let data;
+        try {
+            data = JSON.parse(request.responseText);
+        } catch {
+            reject(new Error("O servidor de arquivos retornou uma resposta inválida."));
+            return;
+        }
+
+        if (!data || typeof data !== "object" || request.status < 200 || request.status >= 300 || !data.sucesso) {
+            reject(new Error(typeof data?.erro === "string" ? data.erro : "O servidor não aceitou o arquivo."));
+            return;
+        }
+
+        try {
+            const url = new URL(data.url);
+            if (!["http:", "https:"].includes(url.protocol)) throw new Error();
+            resolve({
+                id: url.href,
+                name: file.name,
+                url: url.href,
+                contentType: file.type || "application/octet-stream",
+                size: file.size,
+                source: "official-site",
+            });
+        } catch {
+            reject(new Error("O servidor de arquivos retornou uma URL inválida."));
+        }
+    });
+    request.send(formData);
+});
 
 function dateKey(date) {
     const year = date.getFullYear();
@@ -105,9 +146,7 @@ export default function StudyCalendar() {
             const uploaded = [];
             for (const file of files) {
                 setUploadProgress({ fileName: file.name, percent: 0 });
-                uploaded.push(await uploadCalendarAttachment(
-                    auth.currentUser.uid,
-                    selectedKey,
+                uploaded.push(await handleFileUpload(
                     file,
                     (progress) => setUploadProgress({ fileName: file.name, percent: Math.round(progress * 100) }),
                 ));
@@ -117,8 +156,8 @@ export default function StudyCalendar() {
             await saveCalendarEntry(auth.currentUser.uid, selectedKey, { notes, attachments: nextAttachments });
             setAttachments(nextAttachments);
             setNotice(`${uploaded.length === 1 ? "Arquivo adicionado" : "Arquivos adicionados"} ao diário.`);
-        } catch {
-            setError("Não foi possível enviar o arquivo. Confira se o Firebase Storage está ativado e suas regras foram publicadas.");
+        } catch (uploadError) {
+            setError(uploadError.message || "Não foi possível enviar o arquivo.");
         } finally {
             setUploadProgress(null);
             setIsSaving(false);
@@ -130,8 +169,11 @@ export default function StudyCalendar() {
         setError("");
         setNotice("");
         try {
-            await deleteCalendarAttachment(attachment.path);
-            const nextAttachments = attachments.filter((item) => item.path !== attachment.path);
+            if (attachment.source !== "official-site") {
+                await deleteCalendarAttachment(attachment.path);
+            }
+            const attachmentId = attachment.id || attachment.path || attachment.url;
+            const nextAttachments = attachments.filter((item) => (item.id || item.path || item.url) !== attachmentId);
             await saveCalendarEntry(auth.currentUser.uid, selectedKey, { notes, attachments: nextAttachments });
             setAttachments(nextAttachments);
             setNotice("Arquivo removido.");
@@ -272,7 +314,7 @@ export default function StudyCalendar() {
                                 ) : (
                                     <ul className="mt-4 space-y-3">
                                         {attachments.map((attachment) => (
-                                            <li key={attachment.path} className="flex items-center gap-3 rounded-xl bg-(--bg) p-3">
+                                            <li key={attachment.id || attachment.path || attachment.url} className="flex items-center gap-3 rounded-xl bg-(--bg) p-3">
                                                 {attachment.contentType?.startsWith("image/") ? (
                                                     <img src={attachment.url} alt="" className="h-12 w-12 rounded-lg object-cover" />
                                                 ) : (
