@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, getDocs, getFirestore, query, setDoc, Timestamp, where } from "firebase/firestore";
+import { addDoc, arrayUnion, collection, doc, getDoc, getDocs, getFirestore, query, setDoc, Timestamp, where } from "firebase/firestore";
 import { deleteObject, getDownloadURL, getStorage, ref, uploadBytesResumable } from "firebase/storage";
 import { app } from "../firebase";
 
@@ -30,6 +30,31 @@ export async function getStudySessions(userId, start, end) {
 export async function getAllStudySessions(userId) {
     const snapshot = await getDocs(userCollection(userId, "studySessions"));
     return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+}
+
+export async function getCustomStudySubjects(userId) {
+    const snapshot = await getDoc(doc(db, "users", userId, "settings", "studySubjects"));
+    if (!snapshot.exists()) return [];
+
+    const savedSubjects = snapshot.data().subjects;
+    if (savedSubjects === undefined) return [];
+    if (!Array.isArray(savedSubjects)) throw new Error("A lista de matérias salva está inválida.");
+    return savedSubjects.filter((subject) => typeof subject === "string" && subject.trim());
+}
+
+export async function addCustomStudySubject(userId, subject) {
+    const name = subject.trim();
+    const settingsRef = doc(db, "users", userId, "settings", "studySubjects");
+    const snapshot = await getDoc(settingsRef);
+    const savedSubjects = snapshot.exists() ? snapshot.data().subjects ?? [] : [];
+    if (!Array.isArray(savedSubjects) || savedSubjects.some((item) => typeof item !== "string")) {
+        throw new Error("A lista de matérias salva está inválida.");
+    }
+    const existingSubject = savedSubjects.find((item) => item.trim().toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (existingSubject) return existingSubject;
+
+    await setDoc(settingsRef, { subjects: arrayUnion(name) }, { merge: true });
+    return name;
 }
 
 export async function getCalendarEntry(userId, dateKey) {
