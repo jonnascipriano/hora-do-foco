@@ -25,15 +25,22 @@ export default function StudyTimer({ compact = false }) {
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
+    const [notificationPermission, setNotificationPermission] = useState(
+        "Notification" in window ? Notification.permission : "unsupported",
+    );
+    const [notificationError, setNotificationError] = useState("");
     const focusSecondsRef = useRef(0);
     const freeSecondsRef = useRef(0);
     const remainingSecondsRef = useRef(25 * 60);
     const focusStartedAtRef = useRef(null);
     const freeStartedAtRef = useRef(null);
+    const audioContextRef = useRef(null);
+    const lastCompletionAtRef = useRef(0);
 
     const resolvedSubject = subject === "Outros" ? customSubject.trim() : subject;
     const timerSeconds = mode === "free" ? freeSeconds : remainingSeconds;
     const hasUnfinishedSession = freeSeconds > 0 || focusSeconds > 0 || phase === "break";
+    const notificationTag = "hora-do-foco-timer";
 
     const recordSession = useCallback(async (seconds, startedAt, endedAt, sessionMode) => {
         if (!seconds || !resolvedSubject) return;
@@ -45,6 +52,69 @@ export default function StudyTimer({ compact = false }) {
             endedAt,
         });
     }, [resolvedSubject]);
+
+    const notify = useCallback(async (title, body, silent = false) => {
+        if (notificationPermission !== "granted" || !("serviceWorker" in navigator)) return;
+
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            await registration.showNotification(title, {
+                body,
+                icon: `${import.meta.env.BASE_URL}android-chrome-192x192.png`,
+                tag: notificationTag,
+                renotify: !silent,
+                silent,
+            });
+        } catch (notificationFailure) {
+            console.error("Não foi possível exibir a notificação do Pomodoro.", notificationFailure);
+            setNotificationError("Não foi possível exibir a notificação. Confira as permissões do navegador.");
+        }
+    }, [notificationPermission]);
+
+    const playCompletionSound = useCallback(() => {
+        const audioContext = audioContextRef.current;
+        if (!audioContext) return;
+
+        try {
+            const startAt = audioContext.currentTime;
+            [660, 880, 660].forEach((frequency, index) => {
+                const oscillator = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                const noteStart = startAt + index * 0.24;
+                oscillator.frequency.value = frequency;
+                gain.gain.setValueAtTime(0.0001, noteStart);
+                gain.gain.exponentialRampToValueAtTime(0.18, noteStart + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.2);
+                oscillator.connect(gain);
+                gain.connect(audioContext.destination);
+                oscillator.start(noteStart);
+                oscillator.stop(noteStart + 0.21);
+            });
+        } catch (soundFailure) {
+            console.error("Não foi possível reproduzir o alerta sonoro do Pomodoro.", soundFailure);
+            setNotificationError("Não foi possível reproduzir o alerta sonoro neste dispositivo.");
+        }
+    }, []);
+
+    const enableNotifications = useCallback(async () => {
+        if (!("Notification" in window)) {
+            setNotificationPermission("unsupported");
+            return;
+        }
+
+        try {
+            const permission = await Notification.requestPermission();
+            setNotificationPermission(permission);
+            setNotificationError(
+                permission === "denied"
+                    ? "Notificações bloqueadas. Altere a permissão nas configurações do navegador."
+                    : "",
+            );
+        } catch (permissionFailure) {
+            console.error("Não foi possível solicitar permissão para notificações.", permissionFailure);
+            setNotificationError("Não foi possível ativar as notificações neste navegador.");
+        }
+    }, []);
 
     useEffect(() => {
         if (!isRunning) return undefined;
@@ -66,6 +136,9 @@ export default function StudyTimer({ compact = false }) {
             if (nextRemaining > 0) return;
 
             if (phase === "focus") {
+                lastCompletionAtRef.current = Date.now();
+                playCompletionSound();
+                void notify("Fim do foco", "Seu ciclo de estudo terminou. Hora da pausa.");
                 const seconds = focusSecondsRef.current;
                 const endedAt = new Date();
                 const startedAt = focusStartedAtRef.current || new Date(endedAt.getTime() - seconds * 1000);
@@ -81,6 +154,9 @@ export default function StudyTimer({ compact = false }) {
                 setRemainingSeconds(remainingSecondsRef.current);
                 setPhase("break");
             } else {
+                lastCompletionAtRef.current = Date.now();
+                playCompletionSound();
+                void notify("Fim da pausa", "Sua pausa terminou. Hora de voltar aos estudos.");
                 focusStartedAtRef.current = new Date();
                 focusSecondsRef.current = 0;
                 setFocusSeconds(0);
@@ -90,7 +166,49 @@ export default function StudyTimer({ compact = false }) {
             }
         }, 1000);
         return () => window.clearInterval(interval);
-    }, [isRunning, mode, phase, breakMinutes, studyMinutes, resolvedSubject, recordSession]);
+    }, [isRunning, mode, phase, breakMinutes, studyMinutes, resolvedSubject, recordSession, notify, playCompletionSound]);
+
+    useEffect(() => {
+        if (!isRunning || notificationPermission !== "granted") return undefined;
+
+        const updateTimerNotification = () => {
+            if (!document.hidden || Date.now() - lastCompletionAtRef.current < 60_000) return;
+            const isBreak = mode === "pomodoro" && phase === "break";
+            const title = mode === "free"
+                ? "Contador livre em andamento"
+                : isBreak ? "Pausa em andamento" : "Foco em andamento";
+            const body = mode === "free"
+                ? `${formatClock(freeSecondsRef.current)} estudados`
+                : `${formatClock(remainingSecondsRef.current)} restantes`;
+            void notify(title, body, true);
+        };
+        const closeTimerNotification = () => {
+            navigator.serviceWorker.ready.then((registration) =>
+                registration.getNotifications({ tag: notificationTag }).then((notifications) => {
+                    notifications.forEach((notification) => notification.close());
+                }),
+            ).catch((notificationFailure) => {
+                console.error("Não foi possível atualizar a notificação do timer.", notificationFailure);
+            });
+        };
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                updateTimerNotification();
+            } else {
+                closeTimerNotification();
+            }
+        };
+
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        const updateInterval = window.setInterval(updateTimerNotification, 60_000);
+        handleVisibilityChange();
+
+        return () => {
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+            window.clearInterval(updateInterval);
+            if (!isRunning || !document.hidden) closeTimerNotification();
+        };
+    }, [isRunning, mode, notificationPermission, notify, phase]);
 
     function selectMode(nextMode) {
         if (isRunning || hasUnfinishedSession) return;
@@ -111,9 +229,20 @@ export default function StudyTimer({ compact = false }) {
     function startTimer() {
         setError("");
         setNotice("");
+        setNotificationError("");
         if (!resolvedSubject) {
             setError(subject === "Outros" ? "Informe o nome da matéria para começar." : "Selecione uma matéria para começar.");
             return;
+        }
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass && !audioContextRef.current) {
+            audioContextRef.current = new AudioContextClass();
+        }
+        if (audioContextRef.current?.state === "suspended") {
+            audioContextRef.current.resume().catch((soundFailure) => {
+                console.error("Não foi possível ativar o áudio para o alerta do Pomodoro.", soundFailure);
+                setNotificationError("Ative o som do navegador para ouvir o alerta ao fim do ciclo.");
+            });
         }
         if (mode === "free" && freeSecondsRef.current === 0) freeStartedAtRef.current = new Date();
         if (mode === "pomodoro" && phase === "focus" && focusSecondsRef.current === 0) focusStartedAtRef.current = new Date();
@@ -280,6 +409,35 @@ export default function StudyTimer({ compact = false }) {
                         </button>
                     )}
                 </div>
+                {notificationPermission === "default" && (
+                    <div className="mt-5 text-center">
+                        <button
+                            type="button"
+                            onClick={enableNotifications}
+                            className="text-sm font-bold text-(--purple) underline underline-offset-2"
+                        >
+                            Ativar notificações do timer
+                        </button>
+                    </div>
+                )}
+                {notificationPermission === "denied" && (
+                    <p className="mt-5 text-center text-xs text-(--muted)">
+                        Para receber notificações, permita-as nas configurações do navegador.
+                    </p>
+                )}
+                {notificationPermission === "granted" && (
+                    <p className="mt-5 text-center text-xs text-(--muted)">
+                        Notificações ativadas: o timer aparece em segundo plano e avisa quando o ciclo terminar.
+                    </p>
+                )}
+                {notificationPermission === "unsupported" && (
+                    <p className="mt-5 text-center text-xs text-(--muted)">
+                        Este navegador não oferece suporte a notificações.
+                    </p>
+                )}
+                {notificationError && (
+                    <p role="alert" className="mt-3 text-center text-sm font-semibold text-amber-700">{notificationError}</p>
+                )}
                 {error && <p role="alert" className="mt-4 text-center text-sm font-semibold text-red-700">{error}</p>}
                 {notice && <p role="status" className="mt-4 text-center text-sm font-semibold text-green-700">{notice}</p>}
                 {subject === "Outros" && !customSubject.trim() && (
