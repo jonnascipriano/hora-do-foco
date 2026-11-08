@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#863bff" />
+    <script>
+      const redirectPath = new URLSearchParams(window.location.search).get("p");
+      if (redirectPath) {
+        const restoredUrl = new URL(redirectPath, window.location.origin);
+        if (restoredUrl.origin === window.location.origin && restoredUrl.pathname.startsWith("/hora-do-foco/")) {
+          window.history.replaceState(null, "", restoredUrl.pathname + restoredUrl.search + restoredUrl.hash);
+        }
+      }
+    </script>
     <link rel="icon" type="image/png" sizes="16x16" href="%BASE_URL%favicon-16x16.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%favicon-32x32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%apple-touch-icon.png" />

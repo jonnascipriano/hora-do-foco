@@ -9,7 +9,27 @@ const DashboardLayout = lazy(() => import("./components/dashboard/DashboardLayou
 const DashboardHome = lazy(() => import("./components/dashboard/DashboardHome"));
 const StudyCalendar = lazy(() => import("./components/dashboard/StudyCalendar"));
 
-function RequireAuth({ children }) {
+function AuthLoading() {
+    return <div className="grid min-h-screen place-items-center text-(--muted)">Carregando...</div>;
+}
+
+function RequireAuth({ children, user, isLoading }) {
+    if (isLoading) {
+        return <AuthLoading />;
+    }
+
+    return user ? children : <Navigate to="/login" replace />;
+}
+
+function RedirectIfAuthenticated({ children, user, isLoading }) {
+    if (isLoading) {
+        return <AuthLoading />;
+    }
+
+    return user ? <Navigate to="/dashboard" replace /> : children;
+}
+
+export default function App() {
     const [user, setUser] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -18,24 +38,22 @@ function RequireAuth({ children }) {
         setIsLoading(false);
     }), []);
 
-    if (isLoading) {
-        return <div className="grid min-h-screen place-items-center text-(--muted)">Carregando...</div>;
-    }
-
-    return user ? children : <Navigate to="/login" replace />;
-}
-
-export default function App() {
     return (
         <BrowserRouter basename={import.meta.env.BASE_URL}>
             <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/login" element={<Login />} />
+                <Route
+                    path="/"
+                    element={<RedirectIfAuthenticated user={user} isLoading={isLoading}><Home /></RedirectIfAuthenticated>}
+                />
+                <Route
+                    path="/login"
+                    element={<RedirectIfAuthenticated user={user} isLoading={isLoading}><Login /></RedirectIfAuthenticated>}
+                />
                 <Route
                     path="/dashboard"
                     element={
                         <Suspense fallback={<div className="grid min-h-screen place-items-center text-(--muted)">Carregando...</div>}>
-                            <RequireAuth><DashboardLayout /></RequireAuth>
+                            <RequireAuth user={user} isLoading={isLoading}><DashboardLayout /></RequireAuth>
                         </Suspense>
                     }
                 >
