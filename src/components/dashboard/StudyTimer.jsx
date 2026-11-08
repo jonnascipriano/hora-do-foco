@@ -29,6 +29,8 @@ export default function StudyTimer({ compact = false }) {
         "Notification" in window ? Notification.permission : "unsupported",
     );
     const [notificationError, setNotificationError] = useState("");
+    const [isBigScreen, setIsBigScreen] = useState(false);
+    const [orientationWarning, setOrientationWarning] = useState("");
     const focusSecondsRef = useRef(0);
     const freeSecondsRef = useRef(0);
     const remainingSecondsRef = useRef(25 * 60);
@@ -210,6 +212,54 @@ export default function StudyTimer({ compact = false }) {
         };
     }, [isRunning, mode, notificationPermission, notify, phase]);
 
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            if (document.fullscreenElement) return;
+            setIsBigScreen(false);
+            screen.orientation?.unlock?.();
+        };
+        document.addEventListener("fullscreenchange", handleFullscreenChange);
+        return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    }, []);
+
+    async function enterBigScreen() {
+        setOrientationWarning("");
+        setIsBigScreen(true);
+
+        try {
+            if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+                await document.documentElement.requestFullscreen();
+            }
+        } catch (fullscreenFailure) {
+            console.error("Não foi possível ativar a tela cheia do contador.", fullscreenFailure);
+            setOrientationWarning("Não foi possível ativar a tela cheia. Você ainda pode usar o contador ampliado.");
+        }
+
+        if (window.matchMedia("(max-width: 767px)").matches) {
+            if (screen.orientation?.lock) {
+                try {
+                    await screen.orientation.lock("landscape");
+                } catch {
+                    setOrientationWarning("Para girar a tela, desative a rotação automática bloqueada no celular.");
+                }
+            } else {
+                setOrientationWarning("Gire o celular para a horizontal para aproveitar melhor o contador.");
+            }
+        }
+    }
+
+    async function exitBigScreen() {
+        setIsBigScreen(false);
+        screen.orientation?.unlock?.();
+        if (document.fullscreenElement) {
+            try {
+                await document.exitFullscreen();
+            } catch (fullscreenFailure) {
+                console.error("Não foi possível sair da tela cheia do contador.", fullscreenFailure);
+            }
+        }
+    }
+
     function selectMode(nextMode) {
         if (isRunning || hasUnfinishedSession) return;
         setMode(nextMode);
@@ -286,6 +336,29 @@ export default function StudyTimer({ compact = false }) {
             remainingSecondsRef.current = seconds;
             setRemainingSeconds(seconds);
         }
+    }
+
+    if (isBigScreen) {
+        return (
+            <div className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-black text-white">
+                <button
+                    type="button"
+                    onClick={exitBigScreen}
+                    aria-label="Sair da tela grande"
+                    className="absolute right-4 top-4 rounded-full border border-white/30 px-4 py-2 text-sm font-semibold text-white/80"
+                >
+                    Sair
+                </button>
+                <p aria-live="polite" aria-label={`Tempo: ${formatClock(timerSeconds)}`} className="font-mono text-[clamp(4rem,20vw,14rem)] font-bold leading-none tracking-tight">
+                    {formatClock(timerSeconds)}
+                </p>
+                {orientationWarning && (
+                    <p role="status" className="absolute bottom-6 left-4 right-4 text-center text-sm text-white/70">
+                        {orientationWarning}
+                    </p>
+                )}
+            </div>
+        );
     }
 
     if (compact) {
@@ -384,6 +457,13 @@ export default function StudyTimer({ compact = false }) {
                 </div>
 
                 <div className="flex flex-wrap justify-center gap-3">
+                    <button
+                        type="button"
+                        onClick={enterBigScreen}
+                        className="rounded-xl border border-(--line) bg-white px-5 py-3 text-sm font-bold"
+                    >
+                        Tela grande
+                    </button>
                     {!isRunning ? (
                         <button
                             type="button"
