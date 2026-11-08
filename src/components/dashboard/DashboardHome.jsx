@@ -3,7 +3,7 @@ import { auth } from "../../firebase";
 import { getAllStudySessions, getStudySessions } from "../../services/studyData";
 
 const SECONDS_PER_LEVEL = 10 * 60 * 60;
-const MAX_LEVEL = 1000;
+const MAX_LEVEL = 100;
 
 const ranges = [
     { id: "day", label: "Dia" },
