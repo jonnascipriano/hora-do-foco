@@ -1,55 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { auth } from "../../firebase";
 import {
     deleteCalendarAttachment,
+    getCalendarAttachmentBlob,
     getCalendarEntry,
     saveCalendarEntry,
-} from "../../services/studyData";
+    uploadCalendarAttachment,
+} from "../../services/calendarApi";
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
-
-const handleFileUpload = (file, onProgress) => new Promise((resolve, reject) => {
-    const formData = new FormData();
-    formData.append("arquivo", file);
-
-    const request = new XMLHttpRequest();
-    request.open("POST", "https://horadofoco.com/upload.php");
-    request.upload.addEventListener("progress", (event) => {
-        if (event.lengthComputable) onProgress?.(event.loaded / event.total);
-    });
-    request.addEventListener("error", () => reject(new Error("Não foi possível conectar ao servidor de arquivos.")));
-    request.addEventListener("load", () => {
-        let data;
-        try {
-            data = JSON.parse(request.responseText);
-        } catch {
-            reject(new Error("O servidor de arquivos retornou uma resposta inválida."));
-            return;
-        }
-
-        if (!data || typeof data !== "object" || request.status < 200 || request.status >= 300 || !data.sucesso) {
-            reject(new Error(typeof data?.erro === "string" ? data.erro : "O servidor não aceitou o arquivo."));
-            return;
-        }
-
-        try {
-            const url = new URL(data.url);
-            if (!["http:", "https:"].includes(url.protocol)) throw new Error();
-            resolve({
-                id: url.href,
-                name: file.name,
-                url: url.href,
-                contentType: file.type || "application/octet-stream",
-                size: file.size,
-                source: "official-site",
-            });
-        } catch {
-            reject(new Error("O servidor de arquivos retornou uma URL inválida."));
-        }
-    });
-    request.send(formData);
-});
 
 function dateKey(date) {
     const year = date.getFullYear();
@@ -78,7 +37,7 @@ export default function StudyCalendar() {
 
     useEffect(() => {
         let isActive = true;
-        getCalendarEntry(auth.currentUser.uid, selectedKey)
+        getCalendarEntry(selectedKey)
             .then((entry) => {
                 if (!isActive) return;
                 setNotes(entry.notes || "");
@@ -86,9 +45,11 @@ export default function StudyCalendar() {
                 setError("");
                 setLoadedKey(selectedKey);
             })
-            .catch(() => {
+            .catch((loadError) => {
                 if (!isActive) return;
-                setError("Não foi possível carregar este dia. Confira se o Firestore está configurado.");
+                setNotes("");
+                setAttachments([]);
+                setError(loadError.message || "Não foi possível carregar este dia.");
                 setLoadedKey(selectedKey);
             });
         return () => { isActive = false; };
@@ -108,7 +69,7 @@ export default function StudyCalendar() {
     }
 
     function selectDate(date) {
-        if (dateKey(date) > todayKey) return;
+        if (isSaving || dateKey(date) > todayKey) return;
         setNotice("");
         setSelectedDate(date);
     }
@@ -119,10 +80,10 @@ export default function StudyCalendar() {
         setError("");
         setNotice("");
         try {
-            await saveCalendarEntry(auth.currentUser.uid, selectedKey, { notes, attachments });
+            await saveCalendarEntry(selectedKey, notes);
             setNotice("Anotações salvas.");
-        } catch {
-            setError("Não foi possível salvar. Confira sua conexão e as regras do Firestore.");
+        } catch (saveError) {
+            setError(saveError.message || "Não foi possível salvar as anotações.");
         } finally {
             setIsSaving(false);
         }
@@ -146,15 +107,16 @@ export default function StudyCalendar() {
             const uploaded = [];
             for (const file of files) {
                 setUploadProgress({ fileName: file.name, percent: 0 });
-                uploaded.push(await handleFileUpload(
+                const attachment = await uploadCalendarAttachment(
+                    selectedKey,
                     file,
                     (progress) => setUploadProgress({ fileName: file.name, percent: Math.round(progress * 100) }),
-                ));
+                );
+                uploaded.push(attachment);
+                setAttachments((currentAttachments) => [...currentAttachments, attachment]);
             }
             setUploadProgress({ fileName: null, percent: 100 });
-            const nextAttachments = [...attachments, ...uploaded];
-            await saveCalendarEntry(auth.currentUser.uid, selectedKey, { notes, attachments: nextAttachments });
-            setAttachments(nextAttachments);
+            await saveCalendarEntry(selectedKey, notes);
             setNotice(`${uploaded.length === 1 ? "Arquivo adicionado" : "Arquivos adicionados"} ao diário.`);
         } catch (uploadError) {
             setError(uploadError.message || "Não foi possível enviar o arquivo.");
@@ -169,18 +131,30 @@ export default function StudyCalendar() {
         setError("");
         setNotice("");
         try {
-            if (attachment.source !== "official-site") {
-                await deleteCalendarAttachment(attachment.path);
-            }
-            const attachmentId = attachment.id || attachment.path || attachment.url;
-            const nextAttachments = attachments.filter((item) => (item.id || item.path || item.url) !== attachmentId);
-            await saveCalendarEntry(auth.currentUser.uid, selectedKey, { notes, attachments: nextAttachments });
-            setAttachments(nextAttachments);
+            await deleteCalendarAttachment(attachment.id);
+            setAttachments((currentAttachments) => currentAttachments.filter((item) => item.id !== attachment.id));
             setNotice("Arquivo removido.");
-        } catch {
-            setError("Não foi possível remover este arquivo.");
+        } catch (deleteError) {
+            setError(deleteError.message || "Não foi possível remover este arquivo.");
         } finally {
             setIsSaving(false);
+        }
+    }
+
+    async function handleDownloadAttachment(attachment) {
+        setError("");
+        try {
+            const blob = await getCalendarAttachmentBlob(attachment.id);
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = attachment.name;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (downloadError) {
+            setError(downloadError.message || "Não foi possível baixar o arquivo.");
         }
     }
 
@@ -231,7 +205,7 @@ export default function StudyCalendar() {
                                 <button
                                     key={key}
                                     type="button"
-                                    disabled={isFuture}
+                                    disabled={isFuture || isSaving}
                                     onClick={() => selectDate(date)}
                                     aria-pressed={isSelected}
                                     aria-label={date.toLocaleDateString("pt-BR", { dateStyle: "full" })}
@@ -240,6 +214,8 @@ export default function StudyCalendar() {
                                             ? "bg-(--purple) font-bold text-white"
                                             : isFuture
                                               ? "cursor-not-allowed text-slate-300"
+                                              : isSaving
+                                                ? "cursor-not-allowed opacity-50"
                                               : isToday
                                                 ? "border border-(--purple) font-bold text-(--purple)"
                                                 : "hover:bg-(--purple2)"
@@ -314,18 +290,22 @@ export default function StudyCalendar() {
                                 ) : (
                                     <ul className="mt-4 space-y-3">
                                         {attachments.map((attachment) => (
-                                            <li key={attachment.id || attachment.path || attachment.url} className="flex items-center gap-3 rounded-xl bg-(--bg) p-3">
-                                                {attachment.contentType?.startsWith("image/") ? (
-                                                    <img src={attachment.url} alt="" className="h-12 w-12 rounded-lg object-cover" />
-                                                ) : (
-                                                    <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
-                                                        {attachment.contentType === "application/pdf" ? "PDF" : "FILE"}
-                                                    </span>
-                                                )}
+                                            <li key={attachment.id} className="flex items-center gap-3 rounded-xl bg-(--bg) p-3">
+                                                <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
+                                                    {attachment.contentType === "application/pdf"
+                                                        ? "PDF"
+                                                        : attachment.contentType?.startsWith("image/")
+                                                          ? "IMG"
+                                                          : "FILE"}
+                                                </span>
                                                 <span className="min-w-0 flex-1">
-                                                    <a href={attachment.url} target="_blank" rel="noreferrer" className="block truncate text-sm font-bold text-(--ink) hover:text-(--purple)">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDownloadAttachment(attachment)}
+                                                        className="block max-w-full truncate text-left text-sm font-bold text-(--ink) hover:text-(--purple)"
+                                                    >
                                                         {attachment.name}
-                                                    </a>
+                                                    </button>
                                                     <span className="text-xs text-(--muted)">{(attachment.size / (1024 * 1024)).toFixed(2)} MB</span>
                                                 </span>
                                                 <button
