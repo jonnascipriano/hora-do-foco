@@ -28,6 +28,7 @@ export default function StudyCalendar() {
     const [selectedDate, setSelectedDate] = useState(today);
     const [notes, setNotes] = useState("");
     const [attachments, setAttachments] = useState([]);
+    const [imagePreviews, setImagePreviews] = useState({});
     const [loadedKey, setLoadedKey] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(null);
@@ -54,6 +55,38 @@ export default function StudyCalendar() {
             });
         return () => { isActive = false; };
     }, [selectedKey]);
+
+    useEffect(() => {
+        let isActive = true;
+        const previewUrls = {};
+
+        async function loadImagePreviews() {
+            const imageAttachments = attachments.filter((attachment) => attachment.contentType?.startsWith("image/"));
+            await Promise.all(imageAttachments.map(async (attachment) => {
+                try {
+                    const blob = await getCalendarAttachmentBlob(attachment.id);
+                    const previewUrl = URL.createObjectURL(blob);
+                    if (isActive) {
+                        previewUrls[attachment.id] = previewUrl;
+                    } else {
+                        URL.revokeObjectURL(previewUrl);
+                    }
+                } catch (previewError) {
+                    if (isActive) {
+                        setError(previewError.message || `Não foi possível carregar a prévia de ${attachment.name}.`);
+                    }
+                }
+            }));
+
+            if (isActive) setImagePreviews(previewUrls);
+        }
+
+        loadImagePreviews();
+        return () => {
+            isActive = false;
+            Object.values(previewUrls).forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+        };
+    }, [attachments]);
 
     const calendarDays = useMemo(() => {
         const firstWeekday = (month.getDay() + 6) % 7;
@@ -291,13 +324,17 @@ export default function StudyCalendar() {
                                     <ul className="mt-4 space-y-3">
                                         {attachments.map((attachment) => (
                                             <li key={attachment.id} className="flex items-center gap-3 rounded-xl bg-(--bg) p-3">
-                                                <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
-                                                    {attachment.contentType === "application/pdf"
-                                                        ? "PDF"
-                                                        : attachment.contentType?.startsWith("image/")
-                                                          ? "IMG"
-                                                          : "FILE"}
-                                                </span>
+                                                {imagePreviews[attachment.id] ? (
+                                                    <img
+                                                        src={imagePreviews[attachment.id]}
+                                                        alt={attachment.name}
+                                                        className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                                                    />
+                                                ) : (
+                                                    <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
+                                                        {attachment.contentType === "application/pdf" ? "PDF" : "FILE"}
+                                                    </span>
+                                                )}
                                                 <span className="min-w-0 flex-1">
                                                     <button
                                                         type="button"
