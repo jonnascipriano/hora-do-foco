@@ -43,3 +43,12 @@ Because file contents are stored in MySQL, they count against database storage a
 Build and publish the frontend as usual. It calls `https://horadofoco.com/api/calendar.php` by default. To use a different API address, set `VITE_CALENDAR_API_URL` before running the production build.
 
 New calendar entries and uploads will be stored in MySQL. Existing records in Firebase are not deleted or migrated by this change.
+
+Publishing with `gh-pages` only deploys the frontend in `dist`; it does not upload the PHP endpoint or configure the database. Those hosting steps must be completed in cPanel separately.
+
+## Troubleshooting uploads
+
+- A `413` response means the PHP or web-server upload limit is too low. Confirm both PHP limits above and check whether the host has an additional request-size limit.
+- A `500` response means the server could not process the upload. Check the PHP error log, database connection, and MySQL `max_allowed_packet`.
+- The endpoint's `OPTIONS` request should return `204` with `Access-Control-Allow-Origin` for the published site. A `401` from a request without a Firebase login token is expected; it does not test the database connection.
+- Files must be smaller than 15 MB. Uploads are sent individually, even when multiple files are selected.

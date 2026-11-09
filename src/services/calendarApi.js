@@ -75,7 +75,11 @@ export async function uploadCalendarAttachment(date, file, onProgress) {
             try {
                 payload = JSON.parse(request.responseText);
             } catch {
-                reject(new Error("A API do calendário retornou uma resposta inválida."));
+                reject(new Error(
+                    request.status === 413
+                        ? "O servidor recusou o arquivo por causa do limite de upload. Configure upload_max_filesize para 16M e post_max_size para 18M no PHP."
+                        : "A API do calendário retornou uma resposta inválida.",
+                ));
                 return;
             }
 

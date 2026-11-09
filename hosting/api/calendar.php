@@ -349,8 +349,16 @@ function handleUpload(PDO $db, string $userId): void
     }
     $uploadError = $file['error'] ?? UPLOAD_ERR_NO_FILE;
     if ($uploadError !== UPLOAD_ERR_OK) {
-        $status = in_array($uploadError, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true) ? 413 : 400;
-        fail($status, 'O envio do arquivo falhou. Confira os limites de upload do PHP.');
+        if (in_array($uploadError, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+            fail(413, 'O arquivo excede o limite de upload configurado no PHP. Configure upload_max_filesize para 16M e post_max_size para 18M.');
+        }
+        if ($uploadError === UPLOAD_ERR_PARTIAL) {
+            fail(400, 'O arquivo chegou incompleto. Tente enviá-lo novamente.');
+        }
+        if (in_array($uploadError, [UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE, UPLOAD_ERR_EXTENSION], true)) {
+            fail(500, 'O servidor não conseguiu processar o arquivo. Verifique a configuração de uploads do PHP.');
+        }
+        fail(400, 'Nenhum arquivo válido foi recebido.');
     }
     if (
         !isset($file['tmp_name'], $file['name'], $file['size'])
