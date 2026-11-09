@@ -253,12 +253,77 @@ function attachmentMetadata(array $row): array
         'name' => $row['original_name'],
         'contentType' => $row['content_type'],
         'size' => (int) $row['file_size'],
+        'caption' => $row['caption'],
     ];
+}
+
+function isList(array $value): bool
+{
+    $index = 0;
+    foreach (array_keys($value) as $key) {
+        if ($key !== $index) {
+            return false;
+        }
+        $index++;
+    }
+
+    return true;
+}
+
+function handleSummary(PDO $db, string $userId): void
+{
+    $month = $_GET['month'] ?? null;
+    if (!is_string($month) || !preg_match('/^\d{4}-\d{2}$/', $month)) {
+        fail(400, 'Mês inválido.');
+    }
+
+    $firstDay = DateTimeImmutable::createFromFormat('!Y-m', $month);
+    $errors = DateTimeImmutable::getLastErrors();
+    if (
+        $firstDay === false
+        || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+        || $firstDay->format('Y-m') !== $month
+    ) {
+        fail(400, 'Mês inválido.');
+    }
+
+    $statement = $db->prepare(
+        'SELECT entry_date, notes,
+                (SELECT COUNT(*) FROM calendar_attachments
+                 WHERE user_id = :attachment_user_id
+                   AND entry_date = calendar_entries.entry_date) AS attachment_count
+         FROM calendar_entries
+         WHERE user_id = :user_id
+           AND entry_date >= :first_day
+           AND entry_date < :next_month',
+    );
+    $statement->execute([
+        'attachment_user_id' => $userId,
+        'user_id' => $userId,
+        'first_day' => $firstDay->format('Y-m-d'),
+        'next_month' => $firstDay->modify('first day of next month')->format('Y-m-d'),
+    ]);
+
+    $days = [];
+    foreach ($statement->fetchAll() as $row) {
+        $decodedNotes = json_decode((string) $row['notes'], true);
+        $hasNotes = is_array($decodedNotes) && isList($decodedNotes) && $decodedNotes !== [];
+        $hasFiles = (int) $row['attachment_count'] > 0;
+        if ($hasNotes || $hasFiles) {
+            $days[$row['entry_date']] = ['notes' => $hasNotes, 'files' => $hasFiles];
+        }
+    }
+
+    sendJson(['days' => $days]);
 }
 
 function handleGet(PDO $db, string $userId): void
 {
     $action = $_GET['action'] ?? 'entry';
+    if ($action === 'summary') {
+        handleSummary($db, $userId);
+    }
+
     if ($action === 'download') {
         $id = $_GET['id'] ?? '';
         if (!is_string($id) || !preg_match('/^[a-f0-9]{32}$/', $id)) {
@@ -304,16 +369,22 @@ function handleGet(PDO $db, string $userId): void
     $entry = $entryStatement->fetch();
 
     $attachmentStatement = $db->prepare(
-        'SELECT id, original_name, content_type, file_size
-         FROM calendar_attachments
-         WHERE user_id = :user_id AND entry_date = :entry_date
-         ORDER BY created_at, id',
+        'SELECT attachments.id, attachments.original_name, attachments.content_type,
+                attachments.file_size, COALESCE(captions.caption, \'\') AS caption
+         FROM calendar_attachments AS attachments
+         LEFT JOIN calendar_attachment_captions AS captions
+           ON captions.attachment_id = attachments.id
+         WHERE attachments.user_id = :user_id AND attachments.entry_date = :entry_date
+         ORDER BY attachments.created_at, attachments.id',
     );
     $attachmentStatement->execute(['user_id' => $userId, 'entry_date' => $date]);
     $attachments = array_map('attachmentMetadata', $attachmentStatement->fetchAll());
 
+    $decodedNotes = $entry === false ? [] : json_decode((string) $entry['notes'], true);
+    $notes = is_array($decodedNotes) && isList($decodedNotes) ? $decodedNotes : [];
+
     sendJson([
-        'notes' => $entry === false ? '' : $entry['notes'],
+        'notes' => $notes,
         'attachments' => $attachments,
     ]);
 }
@@ -322,8 +393,17 @@ function handleSave(PDO $db, string $userId, array $payload): void
 {
     $date = validatedDate($payload['date'] ?? null);
     $notes = $payload['notes'] ?? null;
-    if (!is_string($notes) || strlen($notes) > 40000) {
-        fail(400, 'As anotações são inválidas ou excedem 10.000 caracteres.');
+    if (!is_array($notes) || !isList($notes) || count($notes) > 100) {
+        fail(400, 'A lista de anotações é inválida.');
+    }
+    foreach ($notes as $note) {
+        if (!is_string($note) || trim($note) === '' || strlen($note) > 4000) {
+            fail(400, 'Cada anotação deve ter até 1.000 caracteres e não pode ficar vazia.');
+        }
+    }
+    $encodedNotes = json_encode($notes, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if (!is_string($encodedNotes) || strlen($encodedNotes) > 40000) {
+        fail(400, 'A lista de anotações excede o limite permitido.');
     }
 
     $statement = $db->prepare(
@@ -334,8 +414,43 @@ function handleSave(PDO $db, string $userId, array $payload): void
     $statement->execute([
         'user_id' => $userId,
         'entry_date' => $date,
-        'notes' => $notes,
+        'notes' => $encodedNotes,
     ]);
+
+    sendJson(['sucesso' => true]);
+}
+
+function handleSaveCaption(PDO $db, string $userId, array $payload): void
+{
+    $id = $payload['id'] ?? '';
+    $caption = $payload['caption'] ?? null;
+    if (!is_string($id) || !preg_match('/^[a-f0-9]{32}$/', $id)) {
+        fail(400, 'Arquivo inválido.');
+    }
+    if (!is_string($caption) || strlen($caption) > 2000) {
+        fail(400, 'A legenda deve ter até 500 caracteres.');
+    }
+
+    $attachment = $db->prepare(
+        'SELECT id, content_type
+         FROM calendar_attachments
+         WHERE id = :id AND user_id = :user_id',
+    );
+    $attachment->execute(['id' => $id, 'user_id' => $userId]);
+    $attachmentRow = $attachment->fetch();
+    if ($attachmentRow === false) {
+        fail(404, 'Arquivo não encontrado.');
+    }
+    if (!str_starts_with($attachmentRow['content_type'], 'image/')) {
+        fail(400, 'Legendas só podem ser salvas em fotos.');
+    }
+
+    $statement = $db->prepare(
+        'INSERT INTO calendar_attachment_captions (attachment_id, caption)
+         VALUES (:attachment_id, :caption)
+         ON DUPLICATE KEY UPDATE caption = VALUES(caption)',
+    );
+    $statement->execute(['attachment_id' => $id, 'caption' => trim($caption)]);
 
     sendJson(['sucesso' => true]);
 }
@@ -446,6 +561,7 @@ function handleUpload(PDO $db, string $userId): void
             'name' => $originalName,
             'contentType' => $contentType,
             'size' => $size,
+            'caption' => '',
         ],
     ], 201);
 }
@@ -502,6 +618,9 @@ try {
     if (($payload['action'] ?? '') === 'save') {
         handleSave($db, $userId, $payload);
     }
+    if (($payload['action'] ?? '') === 'saveCaption') {
+        handleSaveCaption($db, $userId, $payload);
+    }
     if (($payload['action'] ?? '') === 'delete') {
         handleDelete($db, $userId, $payload);
     }
@@ -512,7 +631,7 @@ try {
     if ($error instanceof PDOException) {
         $driverCode = (int) ($error->errorInfo[1] ?? 0);
         if ($driverCode === 1146) {
-            sendJson(['erro' => 'A tabela de arquivos do calendário não existe. Execute novamente o hosting/schema.sql no banco MySQL.'], 500);
+            sendJson(['erro' => 'Uma tabela do calendário está ausente. Execute novamente o hosting/schema.sql no banco MySQL.'], 500);
         }
         if ($driverCode === 1153) {
             sendJson(['erro' => 'O MySQL recusou o arquivo por tamanho. Configure max_allowed_packet para mais de 15 MB.'], 413);

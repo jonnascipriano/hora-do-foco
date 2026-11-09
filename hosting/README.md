@@ -4,7 +4,7 @@ The calendar uses Firebase Authentication for login and the HostGator MySQL data
 
 ## 1. Create the tables
 
-In cPanel, open **phpMyAdmin**, select the database created for the site, open the **SQL** tab, and run [`schema.sql`](./schema.sql). It is safe to run again if `calendar_entries` already exists; this also creates a missing attachments table.
+In cPanel, open **phpMyAdmin**, select the database created for the site, open the **SQL** tab, and run [`schema.sql`](./schema.sql). It is safe to run again if the calendar tables already exist; it also creates the photo-caption table required by the updated API and clears the old free-text notes so the new lists start empty.
 
 ## 2. Configure the private database connection
 
@@ -23,6 +23,8 @@ The allowed origins must match the website's address exactly. If the site uses a
 
 Create `public_html/api` if needed and upload [`api/calendar.php`](./api/calendar.php) there. The endpoint expects the private configuration at the path above.
 
+When publishing calendar changes that update the API or database schema, run the updated SQL in step 1 first, upload the matching PHP endpoint, and then publish the frontend. The frontend and endpoint should be updated together.
+
 Enable PHP 8.0 or newer and these extensions in cPanel:
 
 - PDO MySQL
@@ -40,11 +42,11 @@ Because file contents are stored in MySQL, they count against database storage a
 
 ## 5. Build and deploy the frontend
 
-Build and publish the frontend as usual. It calls `https://horadofoco.com/api/calendar.php` by default. To use a different API address, set `VITE_CALENDAR_API_URL` before running the production build.
+Run `npm run deploy` to publish the frontend. It calls `https://horadofoco.com/api/calendar.php` by default. To use a different API address, set `VITE_CALENDAR_API_URL` before running the production build. This deploy command does not upload the PHP endpoint.
 
-New calendar entries and uploads will be stored in MySQL. Existing records in Firebase are not deleted or migrated by this change.
+New calendar entries and uploads will be stored in MySQL. Existing records in Firebase are not deleted or migrated by this change. Existing photos keep their files and start without a caption.
 
-Publishing with `gh-pages` only deploys the frontend in `dist`; it does not upload the PHP endpoint or configure the database. Those hosting steps must be completed in cPanel separately.
+Publishing with `gh-pages` only deploys the frontend in `dist`; the SQL and PHP hosting steps must be completed in cPanel separately.
 
 ## Troubleshooting uploads
 

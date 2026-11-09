@@ -54,6 +54,18 @@ export async function saveCalendarEntry(date, notes) {
     await postJson({ action: "save", date, notes });
 }
 
+export async function getCalendarSummary(month) {
+    const token = await getAuthToken();
+    const response = await fetch(endpointUrl({ action: "summary", month }), {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    return parseJsonResponse(response);
+}
+
+export async function saveCalendarAttachmentCaption(id, caption) {
+    await postJson({ action: "saveCaption", id, caption });
+}
+
 export async function uploadCalendarAttachment(date, file, onProgress) {
     const token = await getAuthToken();
     const formData = new FormData();

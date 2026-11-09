@@ -3,6 +3,8 @@ import {
     deleteCalendarAttachment,
     getCalendarAttachmentBlob,
     getCalendarEntry,
+    getCalendarSummary,
+    saveCalendarAttachmentCaption,
     saveCalendarEntry,
     uploadCalendarAttachment,
 } from "../../services/calendarApi";
@@ -26,29 +28,38 @@ export default function StudyCalendar() {
     const todayKey = dateKey(today);
     const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
     const [selectedDate, setSelectedDate] = useState(today);
-    const [notes, setNotes] = useState("");
+    const [notes, setNotes] = useState([]);
+    const [annotationDraft, setAnnotationDraft] = useState("");
     const [attachments, setAttachments] = useState([]);
     const [imagePreviews, setImagePreviews] = useState({});
+    const [monthSummary, setMonthSummary] = useState({});
     const [loadedKey, setLoadedKey] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(null);
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
     const selectedKey = dateKey(selectedDate);
+    const monthKey = dateKey(month).slice(0, 7);
+    const imageAttachmentIds = attachments
+        .filter((attachment) => attachment.contentType?.startsWith("image/"))
+        .map((attachment) => attachment.id)
+        .join(",");
 
     useEffect(() => {
         let isActive = true;
         getCalendarEntry(selectedKey)
             .then((entry) => {
                 if (!isActive) return;
-                setNotes(entry.notes || "");
+                setNotes(Array.isArray(entry.notes) ? entry.notes : []);
+                setAnnotationDraft("");
                 setAttachments(entry.attachments || []);
                 setError("");
                 setLoadedKey(selectedKey);
             })
             .catch((loadError) => {
                 if (!isActive) return;
-                setNotes("");
+                setNotes([]);
+                setAnnotationDraft("");
                 setAttachments([]);
                 setError(loadError.message || "Não foi possível carregar este dia.");
                 setLoadedKey(selectedKey);
@@ -58,22 +69,34 @@ export default function StudyCalendar() {
 
     useEffect(() => {
         let isActive = true;
+        getCalendarSummary(monthKey)
+            .then((summary) => {
+                if (isActive) setMonthSummary(summary.days || {});
+            })
+            .catch((summaryError) => {
+                if (isActive) setError(summaryError.message || "Não foi possível carregar os indicadores do calendário.");
+            });
+        return () => { isActive = false; };
+    }, [monthKey]);
+
+    useEffect(() => {
+        let isActive = true;
         const previewUrls = {};
 
         async function loadImagePreviews() {
-            const imageAttachments = attachments.filter((attachment) => attachment.contentType?.startsWith("image/"));
-            await Promise.all(imageAttachments.map(async (attachment) => {
+            const imageIds = imageAttachmentIds ? imageAttachmentIds.split(",") : [];
+            await Promise.all(imageIds.map(async (id) => {
                 try {
-                    const blob = await getCalendarAttachmentBlob(attachment.id);
+                    const blob = await getCalendarAttachmentBlob(id);
                     const previewUrl = URL.createObjectURL(blob);
                     if (isActive) {
-                        previewUrls[attachment.id] = previewUrl;
+                        previewUrls[id] = previewUrl;
                     } else {
                         URL.revokeObjectURL(previewUrl);
                     }
                 } catch (previewError) {
                     if (isActive) {
-                        setError(previewError.message || `Não foi possível carregar a prévia de ${attachment.name}.`);
+                        setError(previewError.message || "Não foi possível carregar a prévia da imagem.");
                     }
                 }
             }));
@@ -86,7 +109,7 @@ export default function StudyCalendar() {
             isActive = false;
             Object.values(previewUrls).forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
         };
-    }, [attachments]);
+    }, [imageAttachmentIds]);
 
     const calendarDays = useMemo(() => {
         const firstWeekday = (month.getDay() + 6) % 7;
@@ -109,17 +132,53 @@ export default function StudyCalendar() {
 
     async function handleSaveNotes(event) {
         event.preventDefault();
+        const draft = annotationDraft.trim();
+        const notesToSave = draft ? [...notes, draft] : notes;
+        if (notesToSave.length > 100) {
+            setError("Você pode salvar até 100 anotações por dia.");
+            return;
+        }
+
         setIsSaving(true);
         setError("");
         setNotice("");
         try {
-            await saveCalendarEntry(selectedKey, notes);
+            await saveCalendarEntry(selectedKey, notesToSave);
+            setNotes(notesToSave);
+            setAnnotationDraft("");
+            setMonthSummary((current) => ({
+                ...current,
+                [selectedKey]: {
+                    notes: notesToSave.length > 0,
+                    files: attachments.length > 0,
+                },
+            }));
             setNotice("Anotações salvas.");
         } catch (saveError) {
             setError(saveError.message || "Não foi possível salvar as anotações.");
         } finally {
             setIsSaving(false);
         }
+    }
+
+    function handleAddAnnotation() {
+        const annotation = annotationDraft.trim();
+        if (!annotation) return;
+        if (annotation.length > 1000) {
+            setError("Cada anotação pode ter até 1.000 caracteres.");
+            return;
+        }
+        if (notes.length >= 100) {
+            setError("Você pode adicionar até 100 anotações por dia.");
+            return;
+        }
+        setNotes((current) => [...current, annotation]);
+        setAnnotationDraft("");
+        setError("");
+    }
+
+    function handleRemoveAnnotation(index) {
+        setNotes((current) => current.filter((_, itemIndex) => itemIndex !== index));
     }
 
     async function handleUpload(event) {
@@ -147,6 +206,10 @@ export default function StudyCalendar() {
                 );
                 uploaded.push(attachment);
                 setAttachments((currentAttachments) => [...currentAttachments, attachment]);
+                setMonthSummary((current) => ({
+                    ...current,
+                    [selectedKey]: { notes: notes.length > 0, files: true },
+                }));
             }
             setUploadProgress({ fileName: null, percent: 100 });
             await saveCalendarEntry(selectedKey, notes);
@@ -165,10 +228,32 @@ export default function StudyCalendar() {
         setNotice("");
         try {
             await deleteCalendarAttachment(attachment.id);
-            setAttachments((currentAttachments) => currentAttachments.filter((item) => item.id !== attachment.id));
+            const remainingAttachments = attachments.filter((item) => item.id !== attachment.id);
+            setAttachments(remainingAttachments);
+            setMonthSummary((current) => ({
+                ...current,
+                [selectedKey]: {
+                    notes: notes.length > 0,
+                    files: remainingAttachments.length > 0,
+                },
+            }));
             setNotice("Arquivo removido.");
         } catch (deleteError) {
             setError(deleteError.message || "Não foi possível remover este arquivo.");
+        } finally {
+            setIsSaving(false);
+        }
+    }
+
+    async function handleSaveCaption(attachment) {
+        setIsSaving(true);
+        setError("");
+        setNotice("");
+        try {
+            await saveCalendarAttachmentCaption(attachment.id, attachment.caption || "");
+            setNotice("Legenda salva.");
+        } catch (captionError) {
+            setError(captionError.message || "Não foi possível salvar a legenda.");
         } finally {
             setIsSaving(false);
         }
@@ -234,6 +319,11 @@ export default function StudyCalendar() {
                             const isFuture = key > todayKey;
                             const isSelected = key === selectedKey;
                             const isToday = key === todayKey;
+                            const markers = monthSummary[key];
+                            const markerDescription = [
+                                markers?.notes && "anotações",
+                                markers?.files && "arquivos",
+                            ].filter(Boolean).join(" e ");
                             return (
                                 <button
                                     key={key}
@@ -241,8 +331,8 @@ export default function StudyCalendar() {
                                     disabled={isFuture || isSaving}
                                     onClick={() => selectDate(date)}
                                     aria-pressed={isSelected}
-                                    aria-label={date.toLocaleDateString("pt-BR", { dateStyle: "full" })}
-                                    className={`mx-auto grid aspect-square w-full max-w-12 place-items-center rounded-xl text-sm transition ${
+                                    aria-label={`${date.toLocaleDateString("pt-BR", { dateStyle: "full" })}${markerDescription ? `, com ${markerDescription}` : ""}`}
+                                    className={`mx-auto flex aspect-square w-full max-w-12 flex-col items-center justify-center rounded-xl text-sm transition ${
                                         isSelected
                                             ? "bg-(--purple) font-bold text-white"
                                             : isFuture
@@ -254,10 +344,26 @@ export default function StudyCalendar() {
                                                 : "hover:bg-(--purple2)"
                                     }`}
                                 >
-                                    {date.getDate()}
+                                    <span>{date.getDate()}</span>
+                                    <span aria-hidden="true" className="mt-1 flex h-1.5 items-center gap-1">
+                                    {markers?.notes && (
+                                        <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-white" : "bg-(--purple)"}`} />
+                                    )}
+                                    {markers?.files && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
+                                    </span>
                                 </button>
                             );
                         })}
+                    </div>
+                    <div className="mt-4 flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs text-(--muted)" aria-label="Legenda dos indicadores">
+                        <span className="flex items-center gap-2">
+                            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-(--purple)" />
+                            Anotações
+                        </span>
+                        <span className="flex items-center gap-2">
+                            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-blue-500" />
+                            Arquivos
+                        </span>
                     </div>
                     <p className="mt-4 text-center text-xs text-(--muted)">Datas futuras não podem ser selecionadas.</p>
                 </section>
@@ -271,19 +377,47 @@ export default function StudyCalendar() {
                     ) : (
                         <>
                             <form onSubmit={handleSaveNotes} className="mt-5">
-                                <label htmlFor="study-notes" className="text-sm font-bold">Anotações</label>
+                                <label htmlFor="study-note-draft" className="text-sm font-bold">Anotações</label>
+                                {notes.length === 0 ? (
+                                    <p className="mt-2 text-sm text-(--muted)">Nenhuma anotação adicionada neste dia.</p>
+                                ) : (
+                                    <ul className="mt-3 space-y-2">
+                                        {notes.map((note, index) => (
+                                            <li key={`${index}-${note}`} className="flex items-start gap-3 rounded-xl bg-(--bg) p-3">
+                                                <span aria-hidden="true" className="mt-2 h-2 w-2 shrink-0 rounded-full bg-(--purple)" />
+                                                <span className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-6">{note}</span>
+                                                <button
+                                                    type="button"
+                                                    disabled={isSaving}
+                                                    onClick={() => handleRemoveAnnotation(index)}
+                                                    aria-label={`Remover anotação ${index + 1}`}
+                                                    className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                >
+                                                    Remover
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                                 <textarea
-                                    id="study-notes"
-                                    value={notes}
-                                    onChange={(event) => setNotes(event.target.value)}
-                                    maxLength={10000}
-                                    rows={7}
+                                    id="study-note-draft"
+                                    value={annotationDraft}
+                                    onChange={(event) => setAnnotationDraft(event.target.value)}
+                                    maxLength={1000}
+                                    rows={3}
                                     disabled={isSaving}
-                                    placeholder="O que você estudou neste dia? Registre pontos importantes, dúvidas e próximos passos."
+                                    placeholder="Escreva uma anotação para este dia."
                                     className="mt-2 w-full resize-y rounded-xl border border-(--line) p-3 text-sm leading-6 outline-none focus:border-(--purple) disabled:bg-(--bg)"
                                 />
-                                <div className="mt-2 flex items-center justify-between gap-3">
-                                    <span className="text-xs text-(--muted)">{notes.length}/10000 caracteres</span>
+                                <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={handleAddAnnotation}
+                                        disabled={isSaving || !annotationDraft.trim()}
+                                        className="rounded-xl border border-(--line) px-4 py-2.5 text-sm font-bold disabled:opacity-60"
+                                    >
+                                        Adicionar à lista
+                                    </button>
                                     <button
                                         type="submit"
                                         disabled={isSaving}
@@ -327,40 +461,92 @@ export default function StudyCalendar() {
                                                 key={attachment.id}
                                                 className={`rounded-xl bg-(--bg) p-3 ${attachment.contentType?.startsWith("image/") ? "space-y-3" : "flex items-center gap-3"}`}
                                             >
-                                                {imagePreviews[attachment.id] ? (
-                                                    <img
-                                                        src={imagePreviews[attachment.id]}
-                                                        alt={attachment.name}
-                                                        className="h-auto max-w-full rounded-lg object-contain"
-                                                    />
-                                                ) : attachment.contentType?.startsWith("image/") ? (
-                                                    <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
-                                                        IMG
-                                                    </span>
+                                                {attachment.contentType?.startsWith("image/") ? (
+                                                    <>
+                                                        {imagePreviews[attachment.id] ? (
+                                                            <img
+                                                                src={imagePreviews[attachment.id]}
+                                                                alt={attachment.caption || "Foto anexada"}
+                                                                className="h-auto max-w-full rounded-lg object-contain"
+                                                            />
+                                                        ) : (
+                                                            <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
+                                                                IMG
+                                                            </span>
+                                                        )}
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={attachment.caption || ""}
+                                                                onChange={(event) => {
+                                                                    const caption = event.target.value;
+                                                                    setAttachments((current) => current.map((item) => (
+                                                                        item.id === attachment.id ? { ...item, caption } : item
+                                                                    )));
+                                                                }}
+                                                                maxLength={500}
+                                                                disabled={isSaving}
+                                                                aria-label="Legenda da foto"
+                                                                placeholder="Escreva uma legenda para a foto (opcional)"
+                                                                className="min-w-0 flex-1 rounded-lg border border-(--line) bg-white px-3 py-2 text-sm outline-none focus:border-(--purple) disabled:bg-(--bg)"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                disabled={isSaving}
+                                                                onClick={() => handleSaveCaption(attachment)}
+                                                                className="rounded-lg border border-(--line) px-3 py-2 text-sm font-bold disabled:opacity-50"
+                                                            >
+                                                                Salvar legenda
+                                                            </button>
+                                                        </div>
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <span className="flex items-center gap-3">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleDownloadAttachment(attachment)}
+                                                                    className="text-sm font-bold text-(--ink) hover:text-(--purple)"
+                                                                >
+                                                                    Baixar foto
+                                                                </button>
+                                                                <span className="text-xs text-(--muted)">{(attachment.size / (1024 * 1024)).toFixed(2)} MB</span>
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                disabled={isSaving}
+                                                                onClick={() => handleDeleteAttachment(attachment)}
+                                                                aria-label="Remover foto"
+                                                                className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                            >
+                                                                Remover
+                                                            </button>
+                                                        </div>
+                                                    </>
                                                 ) : (
-                                                    <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
-                                                        {attachment.contentType === "application/pdf" ? "PDF" : "FILE"}
-                                                    </span>
+                                                    <>
+                                                        <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
+                                                            {attachment.contentType === "application/pdf" ? "PDF" : "FILE"}
+                                                        </span>
+                                                        <span className="min-w-0 flex-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDownloadAttachment(attachment)}
+                                                                className="block max-w-full truncate text-left text-sm font-bold text-(--ink) hover:text-(--purple)"
+                                                            >
+                                                                {attachment.name}
+                                                            </button>
+                                                            <span className="text-xs text-(--muted)">{(attachment.size / (1024 * 1024)).toFixed(2)} MB</span>
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            disabled={isSaving}
+                                                            onClick={() => handleDeleteAttachment(attachment)}
+                                                            aria-label={`Remover ${attachment.name}`}
+                                                            className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                        >
+                                                            Remover
+                                                        </button>
+                                                    </>
                                                 )}
-                                                <span className={`min-w-0 ${attachment.contentType?.startsWith("image/") ? "block" : "flex-1"}`}>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDownloadAttachment(attachment)}
-                                                        className="block max-w-full truncate text-left text-sm font-bold text-(--ink) hover:text-(--purple)"
-                                                    >
-                                                        {attachment.name}
-                                                    </button>
-                                                    <span className="text-xs text-(--muted)">{(attachment.size / (1024 * 1024)).toFixed(2)} MB</span>
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    disabled={isSaving}
-                                                    onClick={() => handleDeleteAttachment(attachment)}
-                                                    aria-label={`Remover ${attachment.name}`}
-                                                    className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
-                                                >
-                                                    Remover
-                                                </button>
                                             </li>
                                         ))}
                                     </ul>
