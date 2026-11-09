@@ -4,7 +4,7 @@ The calendar uses Firebase Authentication for login and the HostGator MySQL data
 
 ## 1. Create the tables
 
-In cPanel, open **phpMyAdmin**, select the database created for the site, open the **SQL** tab, and run [`schema.sql`](./schema.sql).
+In cPanel, open **phpMyAdmin**, select the database created for the site, open the **SQL** tab, and run [`schema.sql`](./schema.sql). It is safe to run again if `calendar_entries` already exists; this also creates a missing attachments table.
 
 ## 2. Configure the private database connection
 
@@ -49,6 +49,7 @@ Publishing with `gh-pages` only deploys the frontend in `dist`; it does not uplo
 ## Troubleshooting uploads
 
 - A `413` response means the PHP or web-server upload limit is too low. Confirm both PHP limits above and check whether the host has an additional request-size limit.
+- If notes work but uploads return a `500`, confirm that the `calendar_attachments` table exists. Re-run [`schema.sql`](./schema.sql) in phpMyAdmin; the table creation is safe to repeat.
 - A `500` response means the server could not process the upload. Check the PHP error log, database connection, and MySQL `max_allowed_packet`.
 - The endpoint's `OPTIONS` request should return `204` with `Access-Control-Allow-Origin` for the published site. A `401` from a request without a Firebase login token is expected; it does not test the database connection.
 - Files must be smaller than 15 MB. Uploads are sent individually, even when multiple files are selected.

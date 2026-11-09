@@ -414,6 +414,7 @@ function handleUpload(PDO $db, string $userId): void
         if ($stream === false) {
             throw new RuntimeException('Não foi possível abrir o arquivo enviado.');
         }
+        $lob = $stream;
 
         try {
             $insert->bindValue(':id', $id);
@@ -422,10 +423,12 @@ function handleUpload(PDO $db, string $userId): void
             $insert->bindValue(':original_name', $originalName);
             $insert->bindValue(':content_type', $contentType);
             $insert->bindValue(':file_size', $size, PDO::PARAM_INT);
-            $insert->bindParam(':file_data', $stream, PDO::PARAM_LOB);
+            $insert->bindParam(':file_data', $lob, PDO::PARAM_LOB);
             $insert->execute();
         } finally {
-            fclose($stream);
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
         }
 
         $db->commit();
@@ -506,5 +509,14 @@ try {
     fail(400, 'Ação inválida.');
 } catch (Throwable $error) {
     error_log('[calendar-api] ' . $error->getMessage());
+    if ($error instanceof PDOException) {
+        $driverCode = (int) ($error->errorInfo[1] ?? 0);
+        if ($driverCode === 1146) {
+            sendJson(['erro' => 'A tabela de arquivos do calendário não existe. Execute novamente o hosting/schema.sql no banco MySQL.'], 500);
+        }
+        if ($driverCode === 1153) {
+            sendJson(['erro' => 'O MySQL recusou o arquivo por tamanho. Configure max_allowed_packet para mais de 15 MB.'], 413);
+        }
+    }
     sendJson(['erro' => 'Falha ao processar o calendário. Confira a configuração do servidor.'], 500);
 }

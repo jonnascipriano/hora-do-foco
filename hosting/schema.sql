@@ -1,4 +1,4 @@
-CREATE TABLE calendar_entries (
+CREATE TABLE IF NOT EXISTS calendar_entries (
     user_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
     entry_date DATE NOT NULL,
     notes TEXT NOT NULL,
@@ -7,7 +7,7 @@ CREATE TABLE calendar_entries (
     PRIMARY KEY (user_id, entry_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE calendar_attachments (
+CREATE TABLE IF NOT EXISTS calendar_attachments (
     id CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     user_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
     entry_date DATE NOT NULL,
