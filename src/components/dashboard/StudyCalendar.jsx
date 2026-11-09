@@ -323,19 +323,26 @@ export default function StudyCalendar() {
                                 ) : (
                                     <ul className="mt-4 space-y-3">
                                         {attachments.map((attachment) => (
-                                            <li key={attachment.id} className="flex items-center gap-3 rounded-xl bg-(--bg) p-3">
+                                            <li
+                                                key={attachment.id}
+                                                className={`rounded-xl bg-(--bg) p-3 ${attachment.contentType?.startsWith("image/") ? "space-y-3" : "flex items-center gap-3"}`}
+                                            >
                                                 {imagePreviews[attachment.id] ? (
                                                     <img
                                                         src={imagePreviews[attachment.id]}
                                                         alt={attachment.name}
-                                                        className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                                                        className="h-auto max-w-full rounded-lg object-contain"
                                                     />
+                                                ) : attachment.contentType?.startsWith("image/") ? (
+                                                    <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
+                                                        IMG
+                                                    </span>
                                                 ) : (
                                                     <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
                                                         {attachment.contentType === "application/pdf" ? "PDF" : "FILE"}
                                                     </span>
                                                 )}
-                                                <span className="min-w-0 flex-1">
+                                                <span className={`min-w-0 ${attachment.contentType?.startsWith("image/") ? "block" : "flex-1"}`}>
                                                     <button
                                                         type="button"
                                                         onClick={() => handleDownloadAttachment(attachment)}
