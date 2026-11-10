@@ -85,7 +85,7 @@ export default function SubjectSelect({ value, onChange, customSubject, onCustom
                         onChange={(event) => onChange(event.target.value)}
                         disabled={disabled}
                         required
-                        className="mt-1.5 w-full rounded-xl border border-(--line) bg-white p-3 font-normal outline-none focus:border-(--purple) disabled:bg-(--bg)"
+                        className="mt-1.5 w-full rounded-xl border border-(--line) bg-(--card) p-3 font-normal outline-none focus:border-(--purple) disabled:bg-(--bg)"
                     >
                         <option value="">Selecione uma matéria</option>
                         {subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
@@ -103,7 +103,7 @@ export default function SubjectSelect({ value, onChange, customSubject, onCustom
                             required
                             maxLength={60}
                             placeholder="Ex.: Medicina Legal"
-                            className="mt-1.5 w-full rounded-xl border border-(--line) bg-white p-3 font-normal outline-none focus:border-(--purple)"
+                            className="mt-1.5 w-full rounded-xl border border-(--line) bg-(--card) p-3 font-normal outline-none focus:border-(--purple)"
                         />
                     </label>
                 )}
@@ -118,7 +118,7 @@ export default function SubjectSelect({ value, onChange, customSubject, onCustom
                         disabled={disabled || isSavingSubject}
                         maxLength={60}
                         placeholder="Ex.: Medicina Legal"
-                        className="min-w-0 flex-1 rounded-xl border border-(--line) bg-white p-3 text-sm font-normal outline-none focus:border-(--purple) disabled:bg-white"
+                        className="min-w-0 flex-1 rounded-xl border border-(--line) bg-(--card) p-3 text-sm font-normal outline-none focus:border-(--purple) disabled:bg-(--card)"
                     />
                     <button
                         type="submit"

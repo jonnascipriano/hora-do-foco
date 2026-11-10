@@ -42,11 +42,13 @@ Because file contents are stored in MySQL, they count against database storage a
 
 ## 5. Build and deploy the frontend
 
-Run `npm run deploy` to publish the frontend. It calls `https://horadofoco.com/api/calendar.php` by default. To use a different API address, set `VITE_CALENDAR_API_URL` before running the production build. This deploy command does not upload the PHP endpoint.
+The production domain `horadofoco.com` is served from HostGator, so `npm run deploy` (which publishes the `gh-pages` branch) does not update that domain. Build the site with `npm run build`, then upload the **contents** of `dist` to `public_html` using cPanel's File Manager. `index.html` must end up directly in `public_html`, alongside the `assets` folder. Overwrite old frontend files, but do not delete `public_html/api` or the private `calendar-config.php` outside `public_html`.
+
+The frontend calls `https://horadofoco.com/api/calendar.php` by default. To use a different API address, set `VITE_CALENDAR_API_URL` before the production build.
 
 New calendar entries and uploads will be stored in MySQL. Existing records in Firebase are not deleted or migrated by this change. Existing photos keep their files and start without a caption.
 
-Publishing with `gh-pages` only deploys the frontend in `dist`; the SQL and PHP hosting steps must be completed in cPanel separately.
+The SQL and PHP hosting steps must be completed in cPanel separately. Deploy the SQL schema and API endpoint before the frontend when publishing a change that depends on new API behavior.
 
 ## Troubleshooting uploads
 

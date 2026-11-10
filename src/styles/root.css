@@ -1,19 +1,33 @@
 :root {
-            --bg: #f4f6fb;
-            --card: #fff;
-            --ink: #172033;
-            --muted: #778198;
-            --line: #e8ebf2;
-            --purple: #6857e8;
-            --purple2: #eeeaff;
-            --green: #16a579;
-            --orange: #f3a64a;
-            --nav: #171b31;
-            --shadow: 0 12px 35px rgba(28, 35, 67, .07)
-        }
+    --bg: #f4f6fb;
+    --card: #fff;
+    --ink: #172033;
+    --muted: #778198;
+    --line: #e8ebf2;
+    --purple: #6857e8;
+    --purple2: #eeeaff;
+    --green: #16a579;
+    --orange: #f3a64a;
+    --nav: #171b31;
+    --shadow: 0 12px 35px rgba(28, 35, 67, .07);
+}
 
+[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111827;
+    --card: #1f2937;
+    --ink: #f3f4f6;
+    --muted: #a3afc2;
+    --line: #374151;
+    --purple: #a99bff;
+    --purple2: #352f55;
+    --green: #45d6a5;
+    --orange: #f6bd70;
+    --nav: #0b1020;
+    --shadow: 0 12px 35px rgba(0, 0, 0, .24);
+}
 
 .landing {
-            min-height: 100vh;
-            background: radial-gradient(circle at 80% 10%, #e6e2ff 0, transparent 30%), #f8f9fd
-        }
+    min-height: 100vh;
+    background: radial-gradient(circle at 80% 10%, #e6e2ff 0, transparent 30%), #f8f9fd;
+}

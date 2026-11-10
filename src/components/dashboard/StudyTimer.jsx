@@ -364,7 +364,7 @@ export default function StudyTimer({ compact = false }) {
     if (compact) {
         if (!isRunning) return null;
         return (
-            <div className="fixed inset-x-4 bottom-4 z-20 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-2xl border border-(--line) bg-white p-3 shadow-xl sm:inset-x-auto sm:right-6">
+            <div className="fixed inset-x-4 bottom-4 z-20 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-2xl border border-(--line) bg-(--card) p-3 shadow-xl sm:inset-x-auto sm:right-6">
                 <div className="min-w-0">
                     <p className="truncate text-xs font-bold">{resolvedSubject} · {mode === "pomodoro" && phase === "break" ? "Pausa" : "Estudando"}</p>
                     <p className="font-mono text-lg font-extrabold">{formatClock(timerSeconds)}</p>
@@ -382,7 +382,7 @@ export default function StudyTimer({ compact = false }) {
             <h1 className="mt-1 text-3xl font-extrabold tracking-tight">Cronômetro</h1>
             <p className="mt-2 text-sm text-(--muted)">Escolha uma matéria. Todo tempo registrado entra no seu dashboard.</p>
 
-            <section className="mt-6 rounded-2xl border border-(--line) bg-white p-5 sm:p-8">
+            <section className="mt-6 rounded-2xl border border-(--line) bg-(--card) p-5 sm:p-8">
                 <div className="flex w-fit rounded-xl bg-(--bg) p-1">
                     {[
                         ["pomodoro", "Pomodoro"],
@@ -395,7 +395,7 @@ export default function StudyTimer({ compact = false }) {
                             disabled={isRunning || isSaving || hasUnfinishedSession}
                             aria-pressed={mode === value}
                             className={`rounded-lg px-4 py-2 text-sm font-bold disabled:opacity-50 ${
-                                mode === value ? "bg-white text-(--purple) shadow-sm" : "text-(--muted)"
+                                mode === value ? "bg-(--card) text-(--purple) shadow-sm" : "text-(--muted)"
                             }`}
                         >
                             {label}
@@ -460,7 +460,7 @@ export default function StudyTimer({ compact = false }) {
                     <button
                         type="button"
                         onClick={enterBigScreen}
-                        className="rounded-xl border border-(--line) bg-white px-5 py-3 text-sm font-bold"
+                        className="rounded-xl border border-(--line) bg-(--card) px-5 py-3 text-sm font-bold"
                     >
                         Tela grande
                     </button>
@@ -474,7 +474,7 @@ export default function StudyTimer({ compact = false }) {
                             {mode === "free" && freeSeconds > 0 ? "Retomar" : "Começar a estudar"}
                         </button>
                     ) : (
-                        <button type="button" onClick={() => setIsRunning(false)} className="rounded-xl border border-(--line) bg-white px-6 py-3 text-sm font-bold">
+                        <button type="button" onClick={() => setIsRunning(false)} className="rounded-xl border border-(--line) bg-(--card) px-6 py-3 text-sm font-bold">
                             Pausar
                         </button>
                     )}

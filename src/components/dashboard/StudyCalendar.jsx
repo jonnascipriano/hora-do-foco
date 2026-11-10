@@ -286,7 +286,7 @@ export default function StudyCalendar() {
             <p className="mt-2 text-sm text-(--muted)">Escolha um dia até hoje para guardar anotações e arquivos da sua preparação.</p>
 
             <div className="mt-6 grid items-start gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-                <section className="rounded-2xl border border-(--line) bg-white p-4 sm:p-6">
+                <section className="rounded-2xl border border-(--line) bg-(--card) p-4 sm:p-6">
                     <div className="flex items-center justify-between gap-3">
                         <button
                             type="button"
@@ -368,7 +368,7 @@ export default function StudyCalendar() {
                     <p className="mt-4 text-center text-xs text-(--muted)">Datas futuras não podem ser selecionadas.</p>
                 </section>
 
-                <section className="rounded-2xl border border-(--line) bg-white p-4 sm:p-6">
+                <section className="rounded-2xl border border-(--line) bg-(--card) p-4 sm:p-6">
                     <h2 className="text-lg font-extrabold">
                         {selectedDate.toLocaleDateString("pt-BR", { dateStyle: "full" })}
                     </h2>
@@ -470,7 +470,7 @@ export default function StudyCalendar() {
                                                                 className="h-auto max-w-full rounded-lg object-contain"
                                                             />
                                                         ) : (
-                                                            <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
+                                                            <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-lg bg-(--card) text-xs font-black text-(--purple)">
                                                                 IMG
                                                             </span>
                                                         )}
@@ -488,7 +488,7 @@ export default function StudyCalendar() {
                                                                 disabled={isSaving}
                                                                 aria-label="Legenda da foto"
                                                                 placeholder="Escreva uma legenda para a foto (opcional)"
-                                                                className="min-w-0 flex-1 rounded-lg border border-(--line) bg-white px-3 py-2 text-sm outline-none focus:border-(--purple) disabled:bg-(--bg)"
+                                                                className="min-w-0 flex-1 rounded-lg border border-(--line) bg-(--card) px-3 py-2 text-sm outline-none focus:border-(--purple) disabled:bg-(--bg)"
                                                             />
                                                             <button
                                                                 type="button"
@@ -523,7 +523,7 @@ export default function StudyCalendar() {
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white text-xs font-black text-(--purple)">
+                                                        <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-(--card) text-xs font-black text-(--purple)">
                                                             {attachment.contentType === "application/pdf" ? "PDF" : "FILE"}
                                                         </span>
                                                         <span className="min-w-0 flex-1">

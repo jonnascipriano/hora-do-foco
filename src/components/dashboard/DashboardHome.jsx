@@ -239,7 +239,7 @@ export default function DashboardHome() {
                     <h1 className="mt-1 text-3xl font-extrabold tracking-tight">Dashboard</h1>
                     <p className="mt-2 text-sm text-(--muted)">Acompanhe sua rotina e evolução nos estudos.</p>
                 </div>
-                <div className="flex rounded-xl border border-(--line) bg-white p-1" aria-label="Período do dashboard">
+                <div className="flex rounded-xl border border-(--line) bg-(--card) p-1" aria-label="Período do dashboard">
                     {ranges.map((item) => (
                         <button
                             key={item.id}
@@ -257,7 +257,7 @@ export default function DashboardHome() {
             </div>
 
             {error && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
-            <section className="mt-6 rounded-2xl border border-(--line) bg-white p-5 sm:p-6">
+            <section className="mt-6 rounded-2xl border border-(--line) bg-(--card) p-5 sm:p-6">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
                         <p className="text-sm font-bold text-(--muted)">Contador geral</p>
@@ -306,7 +306,7 @@ export default function DashboardHome() {
             </section>
 
             <section className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)]">
-                <article className="rounded-2xl border border-(--line) bg-white p-5 sm:p-6">
+                <article className="rounded-2xl border border-(--line) bg-(--card) p-5 sm:p-6">
                     <p className="text-sm font-bold text-(--muted)">Horas estudadas neste período</p>
                     <p className="mt-2 text-3xl font-extrabold">{isLoading ? "…" : formatDuration(totalSeconds)}</p>
                     <div className="mt-6 flex flex-col items-center gap-6 sm:flex-row sm:items-start">
@@ -316,7 +316,7 @@ export default function DashboardHome() {
                             className="grid h-48 w-48 shrink-0 place-items-center rounded-full"
                             style={chartStyle}
                         >
-                            <div className="grid h-28 w-28 place-items-center rounded-full bg-white text-center">
+                            <div className="grid h-28 w-28 place-items-center rounded-full bg-(--card) text-center">
                                 <span>
                                     <strong className="block text-lg">{subjects.length}</strong>
                                     <small className="text-xs text-(--muted)">matérias</small>
@@ -349,7 +349,7 @@ export default function DashboardHome() {
                         </div>
                     </div>
                 </article>
-                <article className="rounded-2xl border border-(--line) bg-white p-5 sm:p-6">
+                <article className="rounded-2xl border border-(--line) bg-(--card) p-5 sm:p-6">
                     <p className="text-sm font-bold text-(--muted)">Resumo de sessões</p>
                     <p className="mt-2 text-3xl font-extrabold">{isLoading ? "…" : sessions.length}</p>
                     <p className="mt-1 text-sm text-(--muted)">sessões concluídas no período</p>

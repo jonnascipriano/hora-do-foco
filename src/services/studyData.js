@@ -54,3 +54,22 @@ export async function addCustomStudySubject(userId, subject) {
     await setDoc(settingsRef, { subjects: arrayUnion(name) }, { merge: true });
     return name;
 }
+
+export async function getThemePreference(userId) {
+    const snapshot = await getDoc(doc(db, "users", userId, "settings", "preferences"));
+    if (!snapshot.exists()) return "light";
+
+    const theme = snapshot.data().theme;
+    if (theme === undefined) return "light";
+    if (theme !== "light" && theme !== "dark") {
+        throw new Error("A preferência de tema salva está inválida.");
+    }
+    return theme;
+}
+
+export async function saveThemePreference(userId, theme) {
+    if (theme !== "light" && theme !== "dark") {
+        throw new Error("O tema selecionado é inválido.");
+    }
+    await setDoc(doc(db, "users", userId, "settings", "preferences"), { theme }, { merge: true });
+}
