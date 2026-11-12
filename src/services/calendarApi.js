@@ -62,6 +62,16 @@ export async function getCalendarSummary(month) {
     return parseJsonResponse(response);
 }
 
+export async function getCalendarTimeline(before) {
+    const token = await getAuthToken();
+    const params = { action: "timeline" };
+    if (before) params.before = before;
+    const response = await fetch(endpointUrl(params), {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    return parseJsonResponse(response);
+}
+
 export async function saveCalendarAttachmentCaption(id, caption) {
     await postJson({ action: "saveCaption", id, caption });
 }

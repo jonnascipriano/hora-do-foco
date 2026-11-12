@@ -8,6 +8,7 @@ import Login from "./components/Login";
 const DashboardLayout = lazy(() => import("./components/dashboard/DashboardLayout"));
 const DashboardHome = lazy(() => import("./components/dashboard/DashboardHome"));
 const StudyCalendar = lazy(() => import("./components/dashboard/StudyCalendar"));
+const StudyTimeline = lazy(() => import("./components/dashboard/StudyTimeline"));
 
 function AuthLoading() {
     return <div className="grid min-h-screen place-items-center text-(--muted)">Carregando...</div>;
@@ -60,6 +61,7 @@ export default function App() {
                     <Route index element={<DashboardHome />} />
                     <Route path="timer" element={null} />
                     <Route path="calendar" element={<StudyCalendar />} />
+                    <Route path="timeline" element={<StudyTimeline />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

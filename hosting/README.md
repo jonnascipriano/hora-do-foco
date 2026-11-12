@@ -23,7 +23,7 @@ The allowed origins must match the website's address exactly. If the site uses a
 
 Create `public_html/api` if needed and upload [`api/calendar.php`](./api/calendar.php) there. The endpoint expects the private configuration at the path above.
 
-When publishing calendar changes that update the API or database schema, run the updated SQL in step 1 first, upload the matching PHP endpoint, and then publish the frontend. The frontend and endpoint should be updated together.
+When publishing calendar changes that update the API or database schema, run the updated SQL in step 1 first, upload the matching PHP endpoint, and then publish the frontend. The timeline uses the updated endpoint, so upload `api/calendar.php` together with the frontend before opening `/dashboard/timeline`.
 
 Enable PHP 8.0 or newer and these extensions in cPanel:
 

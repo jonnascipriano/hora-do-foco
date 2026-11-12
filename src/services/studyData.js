@@ -73,3 +73,21 @@ export async function saveThemePreference(userId, theme) {
     }
     await setDoc(doc(db, "users", userId, "settings", "preferences"), { theme }, { merge: true });
 }
+
+export async function getWeeklyStudyGoal(userId) {
+    const snapshot = await getDoc(doc(db, "users", userId, "settings", "weeklyStudyGoal"));
+    if (!snapshot.exists()) return null;
+
+    const hours = snapshot.data().hours;
+    if (typeof hours !== "number" || !Number.isFinite(hours) || hours < 1 || hours > 168) {
+        throw new Error("Sua meta semanal salva está inválida.");
+    }
+    return hours;
+}
+
+export async function saveWeeklyStudyGoal(userId, hours) {
+    if (typeof hours !== "number" || !Number.isFinite(hours) || hours < 1 || hours > 168) {
+        throw new Error("Defina uma meta entre 1 e 168 horas por semana.");
+    }
+    await setDoc(doc(db, "users", userId, "settings", "weeklyStudyGoal"), { hours });
+}

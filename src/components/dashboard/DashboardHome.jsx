@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { auth } from "../../firebase";
-import { getAllStudySessions, getStudySessions } from "../../services/studyData";
+import {
+    getAllStudySessions,
+    getStudySessions,
+    getWeeklyStudyGoal,
+    saveWeeklyStudyGoal,
+} from "../../services/studyData";
 
 const SECONDS_PER_LEVEL = 10 * 60 * 60;
 const MAX_LEVEL = 100;
@@ -145,11 +150,31 @@ function formatDuration(seconds) {
     return `${hours}h ${minutes.toString().padStart(2, "0")}min`;
 }
 
+function getWeekStart(date) {
+    const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+    return start;
+}
+
+function formatHours(seconds) {
+    return `${(seconds / 3600).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} h`;
+}
+
+function formatWeekRange(start) {
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    const options = { day: "2-digit", month: "2-digit" };
+    return `${start.toLocaleDateString("pt-BR", options)} – ${end.toLocaleDateString("pt-BR", options)}`;
+}
+
 export default function DashboardHome() {
     const [range, setRange] = useState("week");
     const [result, setResult] = useState({ range: null, sessions: [], error: "" });
     const [refreshKey, setRefreshKey] = useState(0);
     const [totalStudy, setTotalStudy] = useState({ seconds: 0, loading: true, error: "" });
+    const [weeklyStudy, setWeeklyStudy] = useState({ weeks: [], loading: true, error: "" });
+    const [weeklyGoal, setWeeklyGoal] = useState({ hours: null, loading: true, saving: false, error: "" });
+    const [goalInput, setGoalInput] = useState("5");
     const isLoading = result.range !== range;
     const sessions = useMemo(
         () => isLoading ? [] : result.sessions,
@@ -198,7 +223,70 @@ export default function DashboardHome() {
     }, [refreshKey]);
 
     useEffect(() => {
-        const refreshAfterSave = () => setRefreshKey((current) => current + 1);
+        let isActive = true;
+        const currentWeekStart = getWeekStart(new Date());
+        const start = new Date(currentWeekStart);
+        start.setDate(start.getDate() - 28);
+        const end = new Date(currentWeekStart);
+        end.setDate(end.getDate() + 7);
+        const weeks = Array.from({ length: 5 }, (_, index) => {
+            const weekStart = new Date(start);
+            weekStart.setDate(weekStart.getDate() + index * 7);
+            return { start: weekStart, seconds: 0 };
+        });
+        getStudySessions(auth.currentUser.uid, start, end)
+            .then((items) => {
+                if (!isActive) return;
+                const totals = new Map(weeks.map((week) => [week.start.toDateString(), 0]));
+                items.forEach((session) => {
+                    const endedAt = session.endedAt?.toDate ? session.endedAt.toDate() : new Date(session.endedAt);
+                    const weekKey = getWeekStart(endedAt).toDateString();
+                    if (totals.has(weekKey)) {
+                        totals.set(weekKey, totals.get(weekKey) + session.elapsedSeconds);
+                    }
+                });
+                setWeeklyStudy({
+                    weeks: weeks.map((week) => ({ ...week, seconds: totals.get(week.start.toDateString()) })),
+                    loading: false,
+                    error: "",
+                });
+            })
+            .catch(() => {
+                if (isActive) setWeeklyStudy({
+                    weeks: [],
+                    loading: false,
+                    error: "Não foi possível carregar a comparação das semanas.",
+                });
+            });
+
+        return () => { isActive = false; };
+    }, [refreshKey]);
+
+    useEffect(() => {
+        let isActive = true;
+        getWeeklyStudyGoal(auth.currentUser.uid)
+            .then((hours) => {
+                if (!isActive) return;
+                setWeeklyGoal({ hours, loading: false, saving: false, error: "" });
+                if (hours !== null) setGoalInput(String(hours));
+            })
+            .catch((goalError) => {
+                console.error("Não foi possível carregar a meta semanal.", goalError);
+                if (isActive) setWeeklyGoal({
+                    hours: null,
+                    loading: false,
+                    saving: false,
+                    error: "Não foi possível carregar sua meta semanal.",
+                });
+            });
+        return () => { isActive = false; };
+    }, []);
+
+    useEffect(() => {
+        const refreshAfterSave = () => {
+            setWeeklyStudy((current) => ({ ...current, loading: true, error: "" }));
+            setRefreshKey((current) => current + 1);
+        };
         window.addEventListener("study-session-saved", refreshAfterSave);
         return () => window.removeEventListener("study-session-saved", refreshAfterSave);
     }, []);
@@ -230,6 +318,43 @@ export default function DashboardHome() {
         ? SECONDS_PER_LEVEL
         : totalStudy.seconds % SECONDS_PER_LEVEL;
     const levelProgress = (levelProgressSeconds / SECONDS_PER_LEVEL) * 100;
+    const displayedWeeks = weeklyStudy.weeks;
+    const maxWeeklySeconds = Math.max(0, ...displayedWeeks.map((week) => week.seconds));
+    const currentWeekSeconds = displayedWeeks[4]?.seconds || 0;
+    const previousWeekSeconds = displayedWeeks[3]?.seconds || 0;
+    const weeklyDifference = currentWeekSeconds - previousWeekSeconds;
+    const currentBarColor = weeklyDifference > 0
+        ? "bg-emerald-500"
+        : weeklyDifference < 0
+          ? "bg-rose-500"
+          : "bg-(--purple)";
+    const goalSeconds = (weeklyGoal.hours || 0) * 3600;
+    const goalProgress = goalSeconds ? Math.min(100, (currentWeekSeconds / goalSeconds) * 100) : 0;
+
+    async function handleSaveWeeklyGoal(event) {
+        event.preventDefault();
+        const hours = Number(goalInput);
+        if (!Number.isFinite(hours) || hours < 1 || hours > 168) {
+            setWeeklyGoal((current) => ({
+                ...current,
+                error: "Escolha uma meta entre 1 e 168 horas por semana.",
+            }));
+            return;
+        }
+
+        setWeeklyGoal((current) => ({ ...current, saving: true, error: "" }));
+        try {
+            await saveWeeklyStudyGoal(auth.currentUser.uid, hours);
+            setWeeklyGoal({ hours, loading: false, saving: false, error: "" });
+        } catch (saveError) {
+            console.error("Não foi possível salvar a meta semanal.", saveError);
+            setWeeklyGoal((current) => ({
+                ...current,
+                saving: false,
+                error: "Não foi possível salvar sua meta. Confira sua conexão e tente novamente.",
+            }));
+        }
+    }
 
     return (
         <div className="mx-auto max-w-6xl">
@@ -358,6 +483,135 @@ export default function DashboardHome() {
                         <p className="mt-1 text-xs leading-5 text-(--muted)">Registre cada sessão para acompanhar sua evolução por matéria e ao longo do tempo.</p>
                     </div>
                 </article>
+            </section>
+
+            <section className="mt-6 rounded-2xl border border-(--line) bg-(--card) p-5 sm:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p className="text-sm font-bold text-(--purple)">Seu ritmo, semana a semana</p>
+                        <h2 className="mt-1 text-xl font-extrabold">Últimas 5 semanas</h2>
+                        <p className="mt-1 text-sm text-(--muted)">Compare o tempo de estudo registrado em cada semana.</p>
+                    </div>
+                    {!weeklyStudy.loading && !weeklyStudy.error && (
+                        <p className={`rounded-xl px-3 py-2 text-sm font-bold ${
+                            weeklyDifference > 0
+                                ? "bg-emerald-50 text-emerald-700"
+                                : weeklyDifference < 0
+                                  ? "bg-rose-50 text-rose-700"
+                                  : "bg-(--purple2) text-(--purple)"
+                        }`}>
+                            {weeklyDifference > 0
+                                ? `${formatDuration(weeklyDifference)} a mais que a semana passada`
+                                : weeklyDifference < 0
+                                  ? `Faltam ${formatDuration(Math.abs(weeklyDifference))} para igualar a semana passada`
+                                  : "Mesmo tempo da semana passada"}
+                        </p>
+                    )}
+                </div>
+                {weeklyStudy.error ? (
+                    <p role="alert" className="mt-5 text-sm font-semibold text-red-700">{weeklyStudy.error}</p>
+                ) : weeklyStudy.loading ? (
+                    <p className="mt-6 text-sm text-(--muted)">Carregando comparação…</p>
+                ) : (
+                    <div className="mt-6 grid grid-cols-5 gap-2 sm:gap-4" aria-label="Horas estudadas nas últimas cinco semanas">
+                        {displayedWeeks.map((week, index) => {
+                            const isCurrentWeek = index === 4;
+                            const barColor = isCurrentWeek ? currentBarColor : "bg-(--purple)";
+                            const height = maxWeeklySeconds
+                                ? Math.max(week.seconds ? 5 : 0, (week.seconds / maxWeeklySeconds) * 100)
+                                : 0;
+                            return (
+                                <div key={week.start.toISOString()} className="min-w-0 text-center">
+                                    <p className="truncate text-xs font-bold text-(--muted)">{formatHours(week.seconds)}</p>
+                                    <div className="mt-2 flex h-36 items-end justify-center rounded-xl bg-(--bg) px-2 pt-2">
+                                        <div
+                                            role="img"
+                                            aria-label={`${isCurrentWeek ? "Esta semana" : `Semana ${5 - index}`}: ${formatDuration(week.seconds)}`}
+                                            className={`w-full max-w-12 rounded-t-lg transition-[height] ${barColor}`}
+                                            style={{ height: `${height}%` }}
+                                        />
+                                    </div>
+                                    <p className={`mt-2 text-xs font-bold ${isCurrentWeek ? "text-(--ink)" : "text-(--muted)"}`}>
+                                        {isCurrentWeek ? "Esta semana" : `${4 - index} sem. atrás`}
+                                    </p>
+                                    <p className="mt-1 text-[10px] text-(--muted)">{formatWeekRange(week.start)}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </section>
+
+            <section className="mt-6 overflow-hidden rounded-2xl border border-(--line) bg-(--card)">
+                <div className="grid gap-5 p-5 sm:p-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                    <div>
+                        <p className="text-sm font-bold text-(--purple)">Um passo de cada vez</p>
+                        <h2 className="mt-1 text-xl font-extrabold">Meta de estudo semanal</h2>
+                        {weeklyGoal.loading || weeklyStudy.loading ? (
+                            <p className="mt-2 text-sm text-(--muted)">Preparando sua meta…</p>
+                        ) : weeklyGoal.hours === null ? (
+                            <p className="mt-2 text-sm text-(--muted)">Escolha um objetivo possível e acompanhe seu progresso durante a semana.</p>
+                        ) : weeklyStudy.error ? (
+                            <p className="mt-2 text-sm text-(--muted)">Sua meta é {weeklyGoal.hours} {weeklyGoal.hours === 1 ? "hora" : "horas"} por semana.</p>
+                        ) : currentWeekSeconds >= goalSeconds ? (
+                            <p className="mt-2 text-sm font-bold text-emerald-600">Parabéns! Você alcançou sua meta semanal. Seu esforço está valendo a pena!</p>
+                        ) : (
+                            <p className="mt-2 text-sm text-(--muted)">
+                                Você já estudou {formatDuration(currentWeekSeconds)}. Faltam {formatDuration(goalSeconds - currentWeekSeconds)} para a sua meta.
+                            </p>
+                        )}
+                        {weeklyGoal.error && <p role="alert" className="mt-2 text-sm font-semibold text-red-700">{weeklyGoal.error}</p>}
+                    </div>
+                    <form onSubmit={handleSaveWeeklyGoal} className="flex flex-wrap items-end gap-2">
+                        <label className="text-xs font-bold text-(--muted)">
+                            Sua meta
+                            <span className="mt-1 flex items-center gap-2">
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="168"
+                                    step="0.5"
+                                    value={goalInput}
+                                    onChange={(event) => setGoalInput(event.target.value)}
+                                    disabled={weeklyGoal.loading || weeklyGoal.saving}
+                                    aria-label="Meta de estudo semanal em horas"
+                                    className="w-24 rounded-xl border border-(--line) bg-(--bg) px-3 py-2.5 text-sm font-bold text-(--ink) outline-none focus:border-(--purple) disabled:opacity-50"
+                                />
+                                <span className="text-sm">h / semana</span>
+                            </span>
+                        </label>
+                        <button
+                            type="submit"
+                            disabled={weeklyGoal.loading || weeklyGoal.saving}
+                            className="rounded-xl bg-(--purple) px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {weeklyGoal.saving ? "Salvando…" : "Salvar meta"}
+                        </button>
+                    </form>
+                </div>
+                {weeklyGoal.hours !== null && !weeklyGoal.loading && !weeklyStudy.error && (
+                    <div className="border-t border-(--line) bg-(--bg) px-5 py-4 sm:px-6">
+                        <div className="mb-2 flex items-center justify-between gap-3 text-xs font-bold">
+                            <span className="text-(--muted)">Progresso desta semana</span>
+                            <span className={goalProgress >= 100 ? "text-emerald-600" : "text-(--purple)"}>
+                                {goalProgress.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%
+                            </span>
+                        </div>
+                        <div
+                            role="progressbar"
+                            aria-label="Progresso da meta semanal"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={goalProgress}
+                            className="h-2.5 overflow-hidden rounded-full bg-(--purple2)"
+                        >
+                            <div
+                                className={`h-full rounded-full transition-[width] ${goalProgress >= 100 ? "bg-emerald-500" : "bg-(--purple)"}`}
+                                style={{ width: `${goalProgress}%` }}
+                            />
+                        </div>
+                    </div>
+                )}
             </section>
         </div>
     );

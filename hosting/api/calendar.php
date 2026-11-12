@@ -317,11 +317,93 @@ function handleSummary(PDO $db, string $userId): void
     sendJson(['days' => $days]);
 }
 
+function handleTimeline(PDO $db, string $userId): void
+{
+    $before = $_GET['before'] ?? null;
+    if ($before !== null) {
+        $before = validatedDate($before);
+    }
+
+    $whereBefore = $before === null ? '' : ' AND entry_date < :before';
+    $statement = $db->prepare(
+        'SELECT entry_date, notes
+         FROM calendar_entries
+         WHERE user_id = :user_id
+           AND (
+               TRIM(notes) <> \'[]\'
+               OR EXISTS (
+                   SELECT 1 FROM calendar_attachments
+                   WHERE user_id = :attachment_user_id
+                     AND entry_date = calendar_entries.entry_date
+               )
+           )' . $whereBefore . '
+         ORDER BY entry_date DESC
+         LIMIT 21',
+    );
+    $parameters = [
+        'user_id' => $userId,
+        'attachment_user_id' => $userId,
+    ];
+    if ($before !== null) {
+        $parameters['before'] = $before;
+    }
+    $statement->execute($parameters);
+    $rows = $statement->fetchAll();
+    $hasMore = count($rows) > 20;
+    $rows = array_slice($rows, 0, 20);
+    $dates = array_column($rows, 'entry_date');
+
+    $attachmentsByDate = [];
+    if ($dates !== []) {
+        $dateParameters = [];
+        $datePlaceholders = [];
+        foreach ($dates as $index => $date) {
+            $placeholder = 'date_' . $index;
+            $datePlaceholders[] = ':' . $placeholder;
+            $dateParameters[$placeholder] = $date;
+        }
+        $dateParameters['user_id'] = $userId;
+        $attachmentStatement = $db->prepare(
+            'SELECT attachments.id, attachments.entry_date, attachments.original_name,
+                    attachments.content_type, attachments.file_size,
+                    COALESCE(captions.caption, \'\') AS caption
+             FROM calendar_attachments AS attachments
+             LEFT JOIN calendar_attachment_captions AS captions
+               ON captions.attachment_id = attachments.id
+             WHERE attachments.user_id = :user_id
+               AND attachments.entry_date IN (' . implode(', ', $datePlaceholders) . ')
+             ORDER BY attachments.entry_date DESC, attachments.created_at, attachments.id',
+        );
+        $attachmentStatement->execute($dateParameters);
+        foreach ($attachmentStatement->fetchAll() as $attachment) {
+            $attachmentsByDate[$attachment['entry_date']][] = attachmentMetadata($attachment);
+        }
+    }
+
+    $entries = array_map(static function (array $row) use ($attachmentsByDate): array {
+        $decodedNotes = json_decode((string) $row['notes'], true);
+        return [
+            'date' => $row['entry_date'],
+            'notes' => is_array($decodedNotes) && isList($decodedNotes) ? $decodedNotes : [],
+            'attachments' => $attachmentsByDate[$row['entry_date']] ?? [],
+        ];
+    }, $rows);
+
+    sendJson([
+        'entries' => $entries,
+        'hasMore' => $hasMore,
+        'nextBefore' => $hasMore && $entries !== [] ? $entries[array_key_last($entries)]['date'] : null,
+    ]);
+}
+
 function handleGet(PDO $db, string $userId): void
 {
     $action = $_GET['action'] ?? 'entry';
     if ($action === 'summary') {
         handleSummary($db, $userId);
+    }
+    if ($action === 'timeline') {
+        handleTimeline($db, $userId);
     }
 
     if ($action === 'download') {

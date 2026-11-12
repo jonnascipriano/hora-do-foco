@@ -9,6 +9,7 @@ const navigation = [
     { to: "/dashboard", label: "Visão geral", icon: "▦", end: true },
     { to: "/dashboard/timer", label: "Estudar", icon: "◷" },
     { to: "/dashboard/calendar", label: "Calendário", icon: "▣" },
+    { to: "/dashboard/timeline", label: "Linha do tempo", icon: "↧" },
 ];
 
 export default function DashboardLayout() {
