@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { auth } from "../../firebase";
 import {
     deleteCalendarAttachment,
@@ -52,6 +52,11 @@ export default function StudyCalendar() {
     const [imagePreviews, setImagePreviews] = useState({});
     const [expandedImageId, setExpandedImageId] = useState(null);
     const [imageZoom, setImageZoom] = useState(1);
+    const [imagePan, setImagePan] = useState({ x: 0, y: 0 });
+    const imageZoomRef = useRef(1);
+    const imageViewerRef = useRef(null);
+    const expandedImageRef = useRef(null);
+    const imageDragRef = useRef(null);
     const [monthSummary, setMonthSummary] = useState({});
     const [studyByDay, setStudyByDay] = useState({});
     const [contributionState, setContributionState] = useState({ loading: true, error: "" });
@@ -62,40 +67,39 @@ export default function StudyCalendar() {
     const [notice, setNotice] = useState("");
     const selectedKey = dateKey(selectedDate);
     const monthKey = dateKey(month).slice(0, 7);
-    const contributionWeeks = useMemo(() => {
-        const currentWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        currentWeek.setDate(currentWeek.getDate() - ((currentWeek.getDay() + 6) % 7));
-        currentWeek.setDate(currentWeek.getDate() - 52 * 7);
-
-        return Array.from({ length: 53 }, (_, weekIndex) => {
-            const weekStart = new Date(currentWeek);
-            weekStart.setDate(weekStart.getDate() + weekIndex * 7);
-            return Array.from({ length: 7 }, (_, dayIndex) => {
-                const date = new Date(weekStart);
-                date.setDate(date.getDate() + dayIndex);
-                return date;
-            });
+    const contributionMonths = useMemo(() => {
+        return Array.from({ length: 12 }, (_, monthOffset) => {
+            const date = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
+            const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+            const firstWeekday = (date.getDay() + 6) % 7;
+            const weekCount = Math.ceil((firstWeekday + daysInMonth) / 7);
+            const weeks = Array.from({ length: weekCount }, (_, weekIndex) =>
+                contributionWeekdays.map((_, weekdayIndex) => {
+                    const dayOfMonth = weekIndex * 7 + weekdayIndex - firstWeekday + 1;
+                    return dayOfMonth >= 1 && dayOfMonth <= daysInMonth
+                        ? new Date(date.getFullYear(), date.getMonth(), dayOfMonth)
+                        : null;
+                }),
+            );
+            return {
+                date,
+                label: date.toLocaleDateString("pt-BR", { month: "short" }).replace(".", ""),
+                weeks,
+            };
         });
     }, [today]);
-    const contributionMonths = useMemo(() => {
-        const months = [];
-        contributionWeeks.forEach((week, weekIndex) => {
-            const firstOfMonth = week.find((date) => date.getDate() === 1);
-            if (firstOfMonth) {
-                months.push({
-                    weekIndex,
-                    label: firstOfMonth.toLocaleDateString("pt-BR", { month: "short" }).replace(".", ""),
-                });
-            }
-        });
-        return months;
-    }, [contributionWeeks]);
     const studiedDays = Object.values(studyByDay).filter((seconds) => seconds > 0).length;
     const totalContributionSeconds = Object.values(studyByDay).reduce((total, seconds) => total + seconds, 0);
     const imageAttachmentIds = attachments
         .filter((attachment) => attachment.contentType?.startsWith("image/"))
         .map((attachment) => attachment.id)
         .join(",");
+    const updateImageZoom = useCallback((nextZoom) => {
+        const zoom = Math.min(3, Math.max(1, nextZoom));
+        imageZoomRef.current = zoom;
+        setImageZoom(zoom);
+        if (zoom === 1) setImagePan({ x: 0, y: 0 });
+    }, []);
 
     useEffect(() => {
         let isActive = true;
@@ -134,7 +138,7 @@ export default function StudyCalendar() {
     useEffect(() => {
         let isActive = true;
         let requestId = 0;
-        const start = new Date(contributionWeeks[0][0]);
+        const start = contributionMonths[contributionMonths.length - 1].date;
         const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
 
         async function loadStudyContributions() {
@@ -172,7 +176,7 @@ export default function StudyCalendar() {
             isActive = false;
             window.removeEventListener("study-session-saved", loadStudyContributions);
         };
-    }, [contributionWeeks, today]);
+    }, [contributionMonths, today]);
 
     useEffect(() => {
         let isActive = true;
@@ -211,12 +215,31 @@ export default function StudyCalendar() {
         function handleKeyDown(event) {
             if (event.key === "Escape") {
                 setExpandedImageId(null);
-                setImageZoom(1);
+                updateImageZoom(1);
+                setImagePan({ x: 0, y: 0 });
             }
         }
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [expandedImageId]);
+    }, [expandedImageId, updateImageZoom]);
+
+    useEffect(() => {
+        if (!expandedImageId) return undefined;
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+
+        function handleWheel(event) {
+            event.preventDefault();
+            updateImageZoom(imageZoomRef.current + (event.deltaY < 0 ? 0.1 : -0.1));
+        }
+
+        const viewer = imageViewerRef.current;
+        viewer?.addEventListener("wheel", handleWheel, { passive: false });
+        return () => {
+            viewer?.removeEventListener("wheel", handleWheel);
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [expandedImageId, updateImageZoom]);
 
     const calendarDays = useMemo(() => {
         const firstWeekday = (month.getDay() + 6) % 7;
@@ -236,7 +259,8 @@ export default function StudyCalendar() {
         setNotice("");
         setEditingAnnotation(null);
         setExpandedImageId(null);
-        setImageZoom(1);
+        updateImageZoom(1);
+        setImagePan({ x: 0, y: 0 });
         setSelectedDate(date);
     }
 
@@ -382,7 +406,8 @@ export default function StudyCalendar() {
             setAttachments(remainingAttachments);
             if (expandedImageId === attachment.id) {
                 setExpandedImageId(null);
-                setImageZoom(1);
+                updateImageZoom(1);
+                setImagePan({ x: 0, y: 0 });
             }
             setMonthSummary((current) => ({
                 ...current,
@@ -434,7 +459,7 @@ export default function StudyCalendar() {
     const isLoading = loadedKey !== selectedKey;
 
     return (
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto w-full min-w-0 max-w-6xl overflow-x-clip">
             <p className="text-sm font-bold text-(--purple)">Seu diário</p>
             <h1 className="mt-1 text-3xl font-extrabold tracking-tight">Calendário de estudos</h1>
             <p className="mt-2 text-sm text-(--muted)">Escolha um dia até hoje para guardar anotações e arquivos da sua preparação.</p>
@@ -460,57 +485,59 @@ export default function StudyCalendar() {
                         <div className="flex w-max min-w-full gap-2">
                             <div
                                 aria-hidden="true"
-                                className="grid shrink-0 grid-rows-[16px_repeat(7,11px)] gap-y-[3px] pt-0.5 text-[10px] leading-[11px] text-(--muted)"
+                                className="grid shrink-0 grid-rows-[16px_repeat(7,16px)] gap-y-1 pt-0.5 text-[10px] leading-4 text-(--muted)"
                             >
-                                {contributionWeekdays.map((day, index) => (
-                                    <span key={day} style={{ gridRow: index + 2 }}>
-                                        {index % 2 === 0 && index < 6 && day}
-                                    </span>
-                                ))}
+                                <span aria-hidden="true" />
+                                {contributionWeekdays.map((day) => <span key={day}>{day}</span>)}
                             </div>
                             <div
                                 role="img"
                                 aria-label="Mapa de atividade de estudos dos últimos doze meses"
-                                className="grid"
-                                style={{
-                                    gridTemplateColumns: "repeat(53, 11px)",
-                                    gridTemplateRows: "16px repeat(7, 11px)",
-                                    columnGap: "3px",
-                                    rowGap: "3px",
-                                }}
+                                className="flex w-max items-start gap-3"
                             >
-                                {contributionMonths.map(({ weekIndex, label }) => (
-                                    <span
-                                        key={`${weekIndex}-${label}`}
-                                        className="text-[10px] leading-4 capitalize text-(--muted)"
-                                        style={{ gridColumn: weekIndex + 1, gridRow: 1 }}
+                                {contributionMonths.map(({ date: contributionMonth, label, weeks }) => (
+                                    <div
+                                        key={`${contributionMonth.getFullYear()}-${contributionMonth.getMonth()}`}
+                                        aria-label={contributionMonth.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+                                        className="shrink-0 border-r border-(--line) pr-3 last:border-r-0"
                                     >
-                                        {label}
-                                    </span>
-                                ))}
-                                {contributionWeeks.flatMap((week, weekIndex) => week.map((date, dayIndex) => {
-                                    const key = dateKey(date);
-                                    const seconds = studyByDay[key] || 0;
-                                    const level = [...CONTRIBUTION_LEVELS]
-                                        .reverse()
-                                        .find((threshold) => seconds >= threshold.seconds).level;
-                                    const duration = seconds > 0
-                                        ? formatStudyDuration(seconds)
-                                        : "Nenhum estudo registrado";
+                                        <p className="mb-1 h-4 text-center text-[10px] leading-4 capitalize text-(--muted)">{label}</p>
+                                        <div className="flex gap-1">
+                                            {[...weeks].reverse().map((week, weekIndex) => (
+                                                <div key={weekIndex} className="flex flex-col gap-1">
+                                                    {week.map((day, dayIndex) => {
+                                                        if (!day) {
+                                                            return (
+                                                                <span
+                                                                    key={`empty-${weekIndex}-${dayIndex}`}
+                                                                    aria-hidden="true"
+                                                                    className="h-4 w-4"
+                                                                />
+                                                            );
+                                                        }
+                                                        const key = dateKey(day);
+                                                        const seconds = studyByDay[key] || 0;
+                                                        const level = [...CONTRIBUTION_LEVELS]
+                                                            .reverse()
+                                                            .find((threshold) => seconds >= threshold.seconds).level;
+                                                        const duration = seconds > 0
+                                                            ? formatStudyDuration(seconds)
+                                                            : "Nenhum estudo registrado";
                                     return (
                                         <span
                                             key={key}
-                                            title={`${date.toLocaleDateString("pt-BR", { dateStyle: "long" })}: ${duration}`}
-                                            aria-label={`${date.toLocaleDateString("pt-BR", { dateStyle: "long" })}: ${duration}`}
-                                            className="rounded-[2px]"
-                                            style={{
-                                                gridColumn: weekIndex + 1,
-                                                gridRow: dayIndex + 2,
-                                                backgroundColor: `var(--contribution-${level})`,
-                                            }}
+                                                            title={`${day.toLocaleDateString("pt-BR", { dateStyle: "long" })}: ${duration}`}
+                                                            aria-label={`${day.toLocaleDateString("pt-BR", { dateStyle: "long" })}: ${duration}`}
+                                                            className="h-4 w-4 rounded-[3px]"
+                                                            style={{ backgroundColor: `var(--contribution-${level})` }}
                                         />
                                     );
-                                }))}
+                                                    })}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -768,7 +795,10 @@ export default function StudyCalendar() {
                                                         {imagePreviews[attachment.id] ? (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setExpandedImageId(attachment.id)}
+                                                                    onClick={() => {
+                                                                        updateImageZoom(1);
+                                                                        setExpandedImageId(attachment.id);
+                                                                    }}
                                                                 aria-label={`Ampliar foto${attachment.caption ? `: ${attachment.caption}` : ""}`}
                                                                 className="block max-w-full cursor-zoom-in rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--purple)"
                                                             >
@@ -869,14 +899,16 @@ export default function StudyCalendar() {
             </div>
             {expandedImageId && imagePreviews[expandedImageId] && (
                 <div
+                    ref={imageViewerRef}
                     role="dialog"
                     aria-modal="true"
                     aria-label="Foto ampliada"
-                    className="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-black/90 p-4"
+                    className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/90 p-4"
                     onClick={(event) => {
                         if (event.target === event.currentTarget) {
                             setExpandedImageId(null);
-                            setImageZoom(1);
+                            updateImageZoom(1);
+                            setImagePan({ x: 0, y: 0 });
                         }
                     }}
                 >
@@ -884,7 +916,8 @@ export default function StudyCalendar() {
                         type="button"
                         onClick={() => {
                             setExpandedImageId(null);
-                            setImageZoom(1);
+                            updateImageZoom(1);
+                            setImagePan({ x: 0, y: 0 });
                         }}
                         aria-label="Fechar foto ampliada"
                         className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-white/15 text-2xl font-bold text-white hover:bg-white/25"
@@ -892,15 +925,43 @@ export default function StudyCalendar() {
                         ×
                     </button>
                     <img
+                        ref={expandedImageRef}
                         src={imagePreviews[expandedImageId]}
                         alt={attachments.find((attachment) => attachment.id === expandedImageId)?.caption || "Foto ampliada"}
+                        draggable={false}
                         onClick={(event) => event.stopPropagation()}
-                        onWheel={(event) => {
-                            event.preventDefault();
-                            setImageZoom((current) => Math.min(3, Math.max(1, current + (event.deltaY < 0 ? 0.1 : -0.1))));
+                        onDragStart={(event) => event.preventDefault()}
+                        onPointerDown={(event) => {
+                            if (imageZoom <= 1) return;
+                            event.currentTarget.setPointerCapture(event.pointerId);
+                            imageDragRef.current = {
+                                pointerId: event.pointerId,
+                                x: event.clientX,
+                                y: event.clientY,
+                                panX: imagePan.x,
+                                panY: imagePan.y,
+                            };
                         }}
-                        className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain transition-transform duration-150"
-                        style={{ transform: `scale(${imageZoom})` }}
+                        onPointerMove={(event) => {
+                            const drag = imageDragRef.current;
+                            if (!drag || drag.pointerId !== event.pointerId) return;
+                            const image = expandedImageRef.current;
+                            if (!image) return;
+                            const maxX = Math.max(0, (image.offsetWidth * imageZoom - (window.innerWidth - 32)) / 2);
+                            const maxY = Math.max(0, (image.offsetHeight * imageZoom - (window.innerHeight - 32)) / 2);
+                            setImagePan({
+                                x: Math.min(maxX, Math.max(-maxX, drag.panX + event.clientX - drag.x)),
+                                y: Math.min(maxY, Math.max(-maxY, drag.panY + event.clientY - drag.y)),
+                            });
+                        }}
+                        onPointerUp={() => { imageDragRef.current = null; }}
+                        onPointerCancel={() => { imageDragRef.current = null; }}
+                        className={`max-h-[90vh] max-w-[95vw] rounded-lg object-contain ${
+                            imageZoom > 1 ? "touch-none cursor-grab active:cursor-grabbing" : "cursor-zoom-in"
+                        }`}
+                        style={{
+                            transform: `translate(${imagePan.x}px, ${imagePan.y}px) scale(${imageZoom})`,
+                        }}
                     />
                     <div
                         role="group"
@@ -909,7 +970,9 @@ export default function StudyCalendar() {
                     >
                         <button
                             type="button"
-                            onClick={() => setImageZoom((current) => Math.max(1, current - 0.25))}
+                            onClick={() => {
+                                updateImageZoom(imageZoomRef.current - 0.25);
+                            }}
                             disabled={imageZoom <= 1}
                             aria-label="Diminuir zoom"
                             className="grid h-9 w-9 place-items-center rounded-full text-2xl font-bold hover:bg-white/15 disabled:opacity-40"
@@ -918,7 +981,9 @@ export default function StudyCalendar() {
                         </button>
                         <button
                             type="button"
-                            onClick={() => setImageZoom(1)}
+                            onClick={() => {
+                                updateImageZoom(1);
+                            }}
                             aria-label="Restaurar zoom original"
                             className="min-w-14 rounded-full px-2 py-1 text-sm font-bold hover:bg-white/15"
                         >
@@ -926,7 +991,7 @@ export default function StudyCalendar() {
                         </button>
                         <button
                             type="button"
-                            onClick={() => setImageZoom((current) => Math.min(3, current + 0.25))}
+                            onClick={() => updateImageZoom(imageZoomRef.current + 0.25)}
                             disabled={imageZoom >= 3}
                             aria-label="Aumentar zoom"
                             className="grid h-9 w-9 place-items-center rounded-full text-2xl font-bold hover:bg-white/15 disabled:opacity-40"
