@@ -168,6 +168,14 @@ export default function DashboardHome() {
     const [result, setResult] = useState({ range: null, sessions: [], error: "" });
     const [refreshKey, setRefreshKey] = useState(0);
     const [totalStudy, setTotalStudy] = useState({ seconds: 0, loading: true, error: "" });
+    const [studyAverages, setStudyAverages] = useState({
+        weekSecondsPerDay: 0,
+        monthSecondsPerDay: 0,
+        elapsedWeekDays: 0,
+        elapsedMonthDays: 0,
+        loading: true,
+        error: "",
+    });
     const [weeklyStudy, setWeeklyStudy] = useState({ weeks: [], loading: true, error: "" });
     const [weeklyGoal, setWeeklyGoal] = useState({ hours: null, loading: true, saving: false, error: "" });
     const [goalInput, setGoalInput] = useState("5");
@@ -202,8 +210,30 @@ export default function DashboardHome() {
         getAllStudySessions(auth.currentUser.uid)
             .then((items) => {
                 if (!isActive) return;
+                const now = new Date();
+                const weekStart = getWeekStart(now);
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+                let weekSeconds = 0;
+                let monthSeconds = 0;
+                items.forEach((session) => {
+                    const endedAt = session.endedAt?.toDate ? session.endedAt.toDate() : new Date(session.endedAt);
+                    if (!Number.isFinite(endedAt.getTime()) || !Number.isFinite(session.elapsedSeconds)) return;
+                    if (endedAt >= weekStart && endedAt < tomorrow) weekSeconds += session.elapsedSeconds;
+                    if (endedAt >= monthStart && endedAt < tomorrow) monthSeconds += session.elapsedSeconds;
+                });
+                const elapsedWeekDays = ((now.getDay() + 6) % 7) + 1;
+                const elapsedMonthDays = now.getDate();
                 setTotalStudy({
                     seconds: items.reduce((total, session) => total + session.elapsedSeconds, 0),
+                    loading: false,
+                    error: "",
+                });
+                setStudyAverages({
+                    weekSecondsPerDay: weekSeconds / elapsedWeekDays,
+                    monthSecondsPerDay: monthSeconds / elapsedMonthDays,
+                    elapsedWeekDays,
+                    elapsedMonthDays,
                     loading: false,
                     error: "",
                 });
@@ -214,6 +244,11 @@ export default function DashboardHome() {
                     loading: false,
                     error: "Não foi possível carregar seu total geral de estudos.",
                 });
+                if (isActive) setStudyAverages((current) => ({
+                    ...current,
+                    loading: false,
+                    error: "Não foi possível calcular suas médias de estudo.",
+                }));
             });
         return () => { isActive = false; };
     }, [refreshKey]);
@@ -606,6 +641,36 @@ export default function DashboardHome() {
                                 style={{ width: `${goalProgress}%` }}
                             />
                         </div>
+                    </div>
+                )}
+            </section>
+
+            <section aria-labelledby="study-average-title" className="mt-6 rounded-2xl border border-(--line) bg-(--card) p-5 sm:p-6">
+                <div>
+                    <p className="text-sm font-bold text-(--purple)">Seu ritmo de estudos</p>
+                    <h2 id="study-average-title" className="mt-1 text-xl font-extrabold">Média diária de estudo</h2>
+                    <p className="mt-1 text-sm text-(--muted)">Inclui os dias sem estudo e considera apenas os dias transcorridos até hoje.</p>
+                </div>
+                {studyAverages.error ? (
+                    <p role="alert" className="mt-4 text-sm font-semibold text-red-700">{studyAverages.error}</p>
+                ) : studyAverages.loading ? (
+                    <p className="mt-4 text-sm text-(--muted)">Calculando suas médias…</p>
+                ) : (
+                    <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                        <article className="rounded-xl bg-(--bg) p-4">
+                            <h3 className="text-sm font-bold text-(--muted)">Nesta semana</h3>
+                            <p className="mt-2 text-2xl font-extrabold">{formatDuration(studyAverages.weekSecondsPerDay)}</p>
+                            <p className="mt-1 text-xs text-(--muted)">
+                                por dia · {studyAverages.elapsedWeekDays} {studyAverages.elapsedWeekDays === 1 ? "dia transcorrido" : "dias transcorridos"}
+                            </p>
+                        </article>
+                        <article className="rounded-xl bg-(--bg) p-4">
+                            <h3 className="text-sm font-bold text-(--muted)">Neste mês</h3>
+                            <p className="mt-2 text-2xl font-extrabold">{formatDuration(studyAverages.monthSecondsPerDay)}</p>
+                            <p className="mt-1 text-xs text-(--muted)">
+                                por dia · {studyAverages.elapsedMonthDays} {studyAverages.elapsedMonthDays === 1 ? "dia transcorrido" : "dias transcorridos"}
+                            </p>
+                        </article>
                     </div>
                 )}
             </section>
