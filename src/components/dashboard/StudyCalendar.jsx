@@ -750,7 +750,7 @@ export default function StudyCalendar() {
                                     <p className="mt-4 rounded-xl bg-(--bg) p-4 text-sm text-(--muted)">Nenhum arquivo adicionado neste dia.</p>
                                 ) : (
                                     <ul className="mt-4 space-y-3">
-                                        {attachments.map((attachment) => (
+                                        {[...attachments].reverse().map((attachment) => (
                                             <li
                                                 key={attachment.id}
                                                 className={`rounded-xl bg-(--bg) p-3 ${attachment.contentType?.startsWith("image/") ? "space-y-3" : "flex items-center gap-3"}`}
