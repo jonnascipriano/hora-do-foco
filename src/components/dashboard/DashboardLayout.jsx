@@ -70,7 +70,7 @@ export default function DashboardLayout() {
 
     return (
         <div data-theme={theme} className="min-h-screen bg-(--bg) text-(--ink) md:flex">
-            <aside className="flex w-full flex-col border-b border-(--line) bg-(--card) p-4 md:min-h-screen md:w-64 md:border-r md:border-b-0 md:p-5">
+            <aside className="sticky top-0 z-30 flex w-full flex-col border-b border-(--line) bg-(--card) p-4 md:h-screen md:w-64 md:self-start md:overflow-y-auto md:border-r md:border-b-0 md:p-5">
                 <NavLink to="/dashboard" className="mb-5 flex items-center font-black text-xl md:mb-10">
                     <span className="mr-2 inline-grid h-8 w-8 place-items-center rounded-xl bg-(--purple) text-white">✓</span>
                     horado<b className="text-(--purple)">foco</b>

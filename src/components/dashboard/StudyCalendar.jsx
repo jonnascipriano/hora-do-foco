@@ -47,8 +47,10 @@ export default function StudyCalendar() {
     const [selectedDate, setSelectedDate] = useState(today);
     const [notes, setNotes] = useState([]);
     const [annotationDraft, setAnnotationDraft] = useState("");
+    const [editingAnnotation, setEditingAnnotation] = useState(null);
     const [attachments, setAttachments] = useState([]);
     const [imagePreviews, setImagePreviews] = useState({});
+    const [expandedImageId, setExpandedImageId] = useState(null);
     const [monthSummary, setMonthSummary] = useState({});
     const [studyByDay, setStudyByDay] = useState({});
     const [contributionState, setContributionState] = useState({ loading: true, error: "" });
@@ -203,6 +205,15 @@ export default function StudyCalendar() {
         };
     }, [imageAttachmentIds]);
 
+    useEffect(() => {
+        if (!expandedImageId) return undefined;
+        function handleKeyDown(event) {
+            if (event.key === "Escape") setExpandedImageId(null);
+        }
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [expandedImageId]);
+
     const calendarDays = useMemo(() => {
         const firstWeekday = (month.getDay() + 6) % 7;
         const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
@@ -219,6 +230,8 @@ export default function StudyCalendar() {
     function selectDate(date) {
         if (isSaving || dateKey(date) > todayKey) return;
         setNotice("");
+        setEditingAnnotation(null);
+        setExpandedImageId(null);
         setSelectedDate(date);
     }
 
@@ -266,11 +279,51 @@ export default function StudyCalendar() {
         }
         setNotes((current) => [...current, annotation]);
         setAnnotationDraft("");
+        setEditingAnnotation(null);
         setError("");
     }
 
     function handleRemoveAnnotation(index) {
         setNotes((current) => current.filter((_, itemIndex) => itemIndex !== index));
+        if (editingAnnotation?.index === index) setEditingAnnotation(null);
+        else if (editingAnnotation?.index > index) {
+            setEditingAnnotation((current) => ({ ...current, index: current.index - 1 }));
+        }
+    }
+
+    async function handleSaveAnnotation(index) {
+        const annotation = editingAnnotation?.value.trim();
+        if (!annotation) {
+            setError("A anotação não pode ficar vazia.");
+            return;
+        }
+        if (annotation.length > 1000) {
+            setError("Cada anotação pode ter até 1.000 caracteres.");
+            return;
+        }
+
+        const updatedNotes = notes.map((note, itemIndex) => itemIndex === index ? annotation : note);
+        setIsSaving(true);
+        setError("");
+        setNotice("");
+        try {
+            await saveCalendarEntry(selectedKey, updatedNotes);
+            setNotes(updatedNotes);
+            setEditingAnnotation(null);
+            setMonthSummary((current) => ({
+                ...current,
+                [selectedKey]: {
+                    ...current[selectedKey],
+                    notes: updatedNotes.length > 0,
+                    files: attachments.length > 0,
+                },
+            }));
+            setNotice("Anotação atualizada.");
+        } catch (saveError) {
+            setError(saveError.message || "Não foi possível atualizar a anotação.");
+        } finally {
+            setIsSaving(false);
+        }
     }
 
     async function handleUpload(event) {
@@ -322,6 +375,7 @@ export default function StudyCalendar() {
             await deleteCalendarAttachment(attachment.id);
             const remainingAttachments = attachments.filter((item) => item.id !== attachment.id);
             setAttachments(remainingAttachments);
+            if (expandedImageId === attachment.id) setExpandedImageId(null);
             setMonthSummary((current) => ({
                 ...current,
                 [selectedKey]: {
@@ -567,27 +621,6 @@ export default function StudyCalendar() {
                         <>
                             <form onSubmit={handleSaveNotes} className="mt-5">
                                 <label htmlFor="study-note-draft" className="text-sm font-bold">Anotações</label>
-                                {notes.length === 0 ? (
-                                    <p className="mt-2 text-sm text-(--muted)">Nenhuma anotação adicionada neste dia.</p>
-                                ) : (
-                                    <ul className="mt-3 space-y-2">
-                                        {notes.map((note, index) => (
-                                            <li key={`${index}-${note}`} className="flex items-start gap-3 rounded-xl bg-(--bg) p-3">
-                                                <span aria-hidden="true" className="mt-2 h-2 w-2 shrink-0 rounded-full bg-(--purple)" />
-                                                <span className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-6">{note}</span>
-                                                <button
-                                                    type="button"
-                                                    disabled={isSaving}
-                                                    onClick={() => handleRemoveAnnotation(index)}
-                                                    aria-label={`Remover anotação ${index + 1}`}
-                                                    className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
-                                                >
-                                                    Remover
-                                                </button>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
                                 <textarea
                                     id="study-note-draft"
                                     value={annotationDraft}
@@ -615,6 +648,78 @@ export default function StudyCalendar() {
                                         {isSaving ? "Salvando..." : "Salvar anotações"}
                                     </button>
                                 </div>
+                                {notes.length === 0 ? (
+                                    <p className="mt-4 text-sm text-(--muted)">Nenhuma anotação adicionada neste dia.</p>
+                                ) : (
+                                    <ul className="mt-4 space-y-2">
+                                        {notes.map((note, index) => (
+                                            <li key={`${index}-${note}`} className="flex items-start gap-3 rounded-xl bg-(--bg) p-3">
+                                                <span aria-hidden="true" className="mt-2 h-2 w-2 shrink-0 rounded-full bg-(--purple)" />
+                                                {editingAnnotation?.index === index ? (
+                                                    <div className="min-w-0 flex-1">
+                                                        <textarea
+                                                            value={editingAnnotation.value}
+                                                            onChange={(event) => setEditingAnnotation((current) => ({
+                                                                ...current,
+                                                                value: event.target.value,
+                                                            }))}
+                                                            maxLength={1000}
+                                                            rows={3}
+                                                            disabled={isSaving}
+                                                            aria-label={`Editar anotação ${index + 1}`}
+                                                            className="w-full resize-y rounded-lg border border-(--line) bg-(--card) p-2 text-sm leading-6 outline-none focus:border-(--purple) disabled:bg-(--bg)"
+                                                        />
+                                                        <div className="mt-2 flex gap-2">
+                                                            <button
+                                                                type="button"
+                                                                disabled={isSaving}
+                                                                onClick={() => handleSaveAnnotation(index)}
+                                                                className="rounded-lg bg-(--purple) px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                                                            >
+                                                                {isSaving ? "Salvando..." : "Salvar edição"}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={isSaving}
+                                                                onClick={() => setEditingAnnotation(null)}
+                                                                className="rounded-lg border border-(--line) px-3 py-1.5 text-xs font-bold disabled:opacity-50"
+                                                            >
+                                                                Cancelar
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <span className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-6">{note}</span>
+                                                )}
+                                                {editingAnnotation?.index !== index && (
+                                                    <div className="flex shrink-0 gap-1">
+                                                        <button
+                                                            type="button"
+                                                            disabled={isSaving}
+                                                            onClick={() => {
+                                                                setEditingAnnotation({ index, value: note });
+                                                                setError("");
+                                                            }}
+                                                            aria-label={`Editar anotação ${index + 1}`}
+                                                            className="rounded-lg px-2 py-1 text-sm font-bold text-(--purple) hover:bg-(--purple2) disabled:opacity-50"
+                                                        >
+                                                            Editar
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled={isSaving}
+                                                            onClick={() => handleRemoveAnnotation(index)}
+                                                            aria-label={`Remover anotação ${index + 1}`}
+                                                            className="rounded-lg px-2 py-1 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                                        >
+                                                            Remover
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                             </form>
 
                             <div className="mt-6 border-t border-(--line) pt-5">
@@ -653,11 +758,18 @@ export default function StudyCalendar() {
                                                 {attachment.contentType?.startsWith("image/") ? (
                                                     <>
                                                         {imagePreviews[attachment.id] ? (
-                                                            <img
-                                                                src={imagePreviews[attachment.id]}
-                                                                alt={attachment.caption || "Foto anexada"}
-                                                                className="h-auto max-w-full rounded-lg object-contain"
-                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setExpandedImageId(attachment.id)}
+                                                                aria-label={`Ampliar foto${attachment.caption ? `: ${attachment.caption}` : ""}`}
+                                                                className="block max-w-full cursor-zoom-in rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--purple)"
+                                                            >
+                                                                <img
+                                                                    src={imagePreviews[attachment.id]}
+                                                                    alt={attachment.caption || "Foto anexada"}
+                                                                    className="h-auto max-w-full rounded-lg object-contain"
+                                                                />
+                                                            </button>
                                                         ) : (
                                                             <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-lg bg-(--card) text-xs font-black text-(--purple)">
                                                                 IMG
@@ -747,6 +859,32 @@ export default function StudyCalendar() {
                     {notice && <p role="status" className="mt-4 text-sm font-semibold text-green-700">{notice}</p>}
                 </section>
             </div>
+            {expandedImageId && imagePreviews[expandedImageId] && (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Foto ampliada"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+                    onClick={(event) => {
+                        if (event.target === event.currentTarget) setExpandedImageId(null);
+                    }}
+                >
+                    <button
+                        type="button"
+                        onClick={() => setExpandedImageId(null)}
+                        aria-label="Fechar foto ampliada"
+                        className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-white/15 text-2xl font-bold text-white hover:bg-white/25"
+                    >
+                        ×
+                    </button>
+                    <img
+                        src={imagePreviews[expandedImageId]}
+                        alt={attachments.find((attachment) => attachment.id === expandedImageId)?.caption || "Foto ampliada"}
+                        onClick={(event) => event.stopPropagation()}
+                        className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain"
+                    />
+                </div>
+            )}
         </div>
     );
 }
