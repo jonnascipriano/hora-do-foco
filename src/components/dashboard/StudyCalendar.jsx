@@ -71,12 +71,13 @@ export default function StudyCalendar() {
         return Array.from({ length: 12 }, (_, monthOffset) => {
             const date = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
             const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+            const visibleDaysInMonth = monthOffset === 0 ? today.getDate() : daysInMonth;
             const firstWeekday = (date.getDay() + 6) % 7;
-            const weekCount = Math.ceil((firstWeekday + daysInMonth) / 7);
+            const weekCount = Math.ceil((firstWeekday + visibleDaysInMonth) / 7);
             const weeks = Array.from({ length: weekCount }, (_, weekIndex) =>
                 contributionWeekdays.map((_, weekdayIndex) => {
                     const dayOfMonth = weekIndex * 7 + weekdayIndex - firstWeekday + 1;
-                    return dayOfMonth >= 1 && dayOfMonth <= daysInMonth
+                    return dayOfMonth >= 1 && dayOfMonth <= visibleDaysInMonth
                         ? new Date(date.getFullYear(), date.getMonth(), dayOfMonth)
                         : null;
                 }),
