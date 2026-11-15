@@ -156,10 +156,6 @@ function getWeekStart(date) {
     return start;
 }
 
-function formatHours(seconds) {
-    return `${(seconds / 3600).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} h`;
-}
-
 function formatWeekRange(start) {
     const end = new Date(start);
     end.setDate(end.getDate() + 6);
@@ -522,7 +518,7 @@ export default function DashboardHome() {
                                 : 0;
                             return (
                                 <div key={week.start.toISOString()} className="min-w-0 text-center">
-                                    <p className="truncate text-xs font-bold text-(--muted)">{formatHours(week.seconds)}</p>
+                                    <p className="text-xs font-bold text-(--muted)">{formatDuration(week.seconds)}</p>
                                     <div className="mt-2 flex h-36 items-end justify-center rounded-xl bg-(--bg) px-2 pt-2">
                                         <div
                                             role="img"
