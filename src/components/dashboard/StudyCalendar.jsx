@@ -557,18 +557,18 @@ export default function StudyCalendar() {
                 </div>
             </section>
 
-            <div className="mt-6 grid items-start gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-                <section className="rounded-2xl border border-(--line) bg-(--card) p-4 sm:p-6">
-                    <div className="flex items-center justify-between gap-3">
+            <div className="mt-6 grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                <section className="min-w-0 rounded-2xl border border-(--line) bg-(--card) p-4 sm:p-6">
+                    <div className="flex min-w-0 items-center justify-between gap-2 sm:gap-3">
                         <button
                             type="button"
                             onClick={() => moveMonth(-1)}
                             aria-label="Mês anterior"
-                            className="grid h-10 w-10 place-items-center rounded-xl border border-(--line) text-lg hover:bg-(--bg)"
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-(--line) text-lg hover:bg-(--bg) sm:h-10 sm:w-10"
                         >
                             ‹
                         </button>
-                        <h2 className="text-lg font-extrabold capitalize">
+                        <h2 className="min-w-0 text-center text-base font-extrabold capitalize sm:text-lg">
                             {month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
                         </h2>
                         <button
@@ -576,12 +576,12 @@ export default function StudyCalendar() {
                             onClick={() => moveMonth(1)}
                             disabled={isCurrentMonth}
                             aria-label="Próximo mês"
-                            className="grid h-10 w-10 place-items-center rounded-xl border border-(--line) text-lg hover:bg-(--bg) disabled:cursor-not-allowed disabled:opacity-40"
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-(--line) text-lg hover:bg-(--bg) disabled:cursor-not-allowed disabled:opacity-40 sm:h-10 sm:w-10"
                         >
                             ›
                         </button>
                     </div>
-                    <div className="mt-5 grid grid-cols-7 gap-1 text-center">
+                    <div className="mt-5 grid min-w-0 grid-cols-7 gap-0.5 text-center sm:gap-1">
                         {weekdays.map((day) => (
                             <span key={day} className="py-2 text-xs font-bold text-(--muted)">{day}</span>
                         ))}
@@ -606,7 +606,7 @@ export default function StudyCalendar() {
                                     onClick={() => selectDate(date)}
                                     aria-pressed={isSelected}
                                     aria-label={`${date.toLocaleDateString("pt-BR", { dateStyle: "full" })}${markerDescription ? `, com ${markerDescription}` : ""}`}
-                                    className={`mx-auto flex aspect-square w-full max-w-12 flex-col items-center justify-center rounded-xl text-sm transition ${
+                                    className={`mx-auto flex aspect-square w-full min-w-0 max-w-12 flex-col items-center justify-center rounded-xl text-sm transition ${
                                         isSelected
                                             ? "bg-(--purple) font-bold text-white"
                                             : isFuture
@@ -647,7 +647,7 @@ export default function StudyCalendar() {
                     <p className="mt-4 text-center text-xs text-(--muted)">Datas futuras não podem ser selecionadas.</p>
                 </section>
 
-                <section className="rounded-2xl border border-(--line) bg-(--card) p-4 sm:p-6">
+                <section className="min-w-0 rounded-2xl border border-(--line) bg-(--card) p-4 sm:p-6">
                     <h2 className="text-lg font-extrabold">
                         {selectedDate.toLocaleDateString("pt-BR", { dateStyle: "full" })}
                     </h2>
