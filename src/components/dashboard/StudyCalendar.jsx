@@ -51,6 +51,7 @@ export default function StudyCalendar() {
     const [attachments, setAttachments] = useState([]);
     const [imagePreviews, setImagePreviews] = useState({});
     const [expandedImageId, setExpandedImageId] = useState(null);
+    const [imageZoom, setImageZoom] = useState(1);
     const [monthSummary, setMonthSummary] = useState({});
     const [studyByDay, setStudyByDay] = useState({});
     const [contributionState, setContributionState] = useState({ loading: true, error: "" });
@@ -208,7 +209,10 @@ export default function StudyCalendar() {
     useEffect(() => {
         if (!expandedImageId) return undefined;
         function handleKeyDown(event) {
-            if (event.key === "Escape") setExpandedImageId(null);
+            if (event.key === "Escape") {
+                setExpandedImageId(null);
+                setImageZoom(1);
+            }
         }
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
@@ -232,6 +236,7 @@ export default function StudyCalendar() {
         setNotice("");
         setEditingAnnotation(null);
         setExpandedImageId(null);
+        setImageZoom(1);
         setSelectedDate(date);
     }
 
@@ -375,7 +380,10 @@ export default function StudyCalendar() {
             await deleteCalendarAttachment(attachment.id);
             const remainingAttachments = attachments.filter((item) => item.id !== attachment.id);
             setAttachments(remainingAttachments);
-            if (expandedImageId === attachment.id) setExpandedImageId(null);
+            if (expandedImageId === attachment.id) {
+                setExpandedImageId(null);
+                setImageZoom(1);
+            }
             setMonthSummary((current) => ({
                 ...current,
                 [selectedKey]: {
@@ -864,14 +872,20 @@ export default function StudyCalendar() {
                     role="dialog"
                     aria-modal="true"
                     aria-label="Foto ampliada"
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+                    className="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-black/90 p-4"
                     onClick={(event) => {
-                        if (event.target === event.currentTarget) setExpandedImageId(null);
+                        if (event.target === event.currentTarget) {
+                            setExpandedImageId(null);
+                            setImageZoom(1);
+                        }
                     }}
                 >
                     <button
                         type="button"
-                        onClick={() => setExpandedImageId(null)}
+                        onClick={() => {
+                            setExpandedImageId(null);
+                            setImageZoom(1);
+                        }}
                         aria-label="Fechar foto ampliada"
                         className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-white/15 text-2xl font-bold text-white hover:bg-white/25"
                     >
@@ -881,8 +895,45 @@ export default function StudyCalendar() {
                         src={imagePreviews[expandedImageId]}
                         alt={attachments.find((attachment) => attachment.id === expandedImageId)?.caption || "Foto ampliada"}
                         onClick={(event) => event.stopPropagation()}
-                        className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain"
+                        onWheel={(event) => {
+                            event.preventDefault();
+                            setImageZoom((current) => Math.min(3, Math.max(1, current + (event.deltaY < 0 ? 0.1 : -0.1))));
+                        }}
+                        className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain transition-transform duration-150"
+                        style={{ transform: `scale(${imageZoom})` }}
                     />
+                    <div
+                        role="group"
+                        aria-label="Controles de zoom da foto"
+                        className="fixed bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-black/70 px-4 py-2 text-white"
+                    >
+                        <button
+                            type="button"
+                            onClick={() => setImageZoom((current) => Math.max(1, current - 0.25))}
+                            disabled={imageZoom <= 1}
+                            aria-label="Diminuir zoom"
+                            className="grid h-9 w-9 place-items-center rounded-full text-2xl font-bold hover:bg-white/15 disabled:opacity-40"
+                        >
+                            −
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setImageZoom(1)}
+                            aria-label="Restaurar zoom original"
+                            className="min-w-14 rounded-full px-2 py-1 text-sm font-bold hover:bg-white/15"
+                        >
+                            {Math.round(imageZoom * 100)}%
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setImageZoom((current) => Math.min(3, current + 0.25))}
+                            disabled={imageZoom >= 3}
+                            aria-label="Aumentar zoom"
+                            className="grid h-9 w-9 place-items-center rounded-full text-2xl font-bold hover:bg-white/15 disabled:opacity-40"
+                        >
+                            +
+                        </button>
+                    </div>
                 </div>
             )}
         </div>
