@@ -689,7 +689,7 @@ export default function StudyCalendar() {
                                 ) : (
                                     <ul className="mt-4 space-y-2">
                                         {notes.map((note, index) => ({ note, index })).reverse().map(({ note, index }) => (
-                                            <li key={`${index}-${note}`} className="flex items-start gap-3 rounded-xl bg-(--bg) p-3">
+                                            <li key={`${index}-${note}`} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-1 rounded-xl bg-(--bg) p-3 md:grid-cols-[auto_minmax(0,1fr)_auto]">
                                                 <span aria-hidden="true" className="mt-2 h-2 w-2 shrink-0 rounded-full bg-(--purple)" />
                                                 {editingAnnotation?.index === index ? (
                                                     <div className="min-w-0 flex-1">
@@ -725,10 +725,10 @@ export default function StudyCalendar() {
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <span className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-6">{note}</span>
+                                                    <span className="min-w-0 whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">{note}</span>
                                                 )}
                                                 {editingAnnotation?.index !== index && (
-                                                    <div className="flex shrink-0 gap-1">
+                                                    <div className="col-start-2 flex w-full justify-end gap-1 md:col-start-3 md:w-auto">
                                                         <button
                                                             type="button"
                                                             disabled={isSaving}
