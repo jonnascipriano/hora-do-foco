@@ -502,9 +502,11 @@ export default function StudyCalendar() {
                             const isSelected = key === selectedKey;
                             const isToday = key === todayKey;
                             const markers = monthSummary[key];
+                            const hasStudied = (studyByDay[key] || 0) > 0;
                             const markerDescription = [
                                 markers?.notes && "anotações",
                                 markers?.files && "arquivos",
+                                hasStudied && "estudos",
                             ].filter(Boolean).join(" e ");
                             return (
                                 <button
@@ -532,6 +534,7 @@ export default function StudyCalendar() {
                                         <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-white" : "bg-(--purple)"}`} />
                                     )}
                                     {markers?.files && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
+                                    {hasStudied && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
                                     </span>
                                 </button>
                             );
@@ -545,6 +548,10 @@ export default function StudyCalendar() {
                         <span className="flex items-center gap-2">
                             <span aria-hidden="true" className="h-2 w-2 rounded-full bg-blue-500" />
                             Arquivos
+                        </span>
+                        <span className="flex items-center gap-2">
+                            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" />
+                            Estudou
                         </span>
                     </div>
                     <p className="mt-4 text-center text-xs text-(--muted)">Datas futuras não podem ser selecionadas.</p>
