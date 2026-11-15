@@ -652,7 +652,7 @@ export default function StudyCalendar() {
                                     <p className="mt-4 text-sm text-(--muted)">Nenhuma anotação adicionada neste dia.</p>
                                 ) : (
                                     <ul className="mt-4 space-y-2">
-                                        {notes.map((note, index) => (
+                                        {notes.map((note, index) => ({ note, index })).reverse().map(({ note, index }) => (
                                             <li key={`${index}-${note}`} className="flex items-start gap-3 rounded-xl bg-(--bg) p-3">
                                                 <span aria-hidden="true" className="mt-2 h-2 w-2 shrink-0 rounded-full bg-(--purple)" />
                                                 {editingAnnotation?.index === index ? (
