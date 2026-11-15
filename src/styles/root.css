@@ -10,6 +10,11 @@
     --orange: #f3a64a;
     --nav: #171b31;
     --shadow: 0 12px 35px rgba(28, 35, 67, .07);
+    --contribution-0: #ebedf0;
+    --contribution-1: #9be9a8;
+    --contribution-2: #40c463;
+    --contribution-3: #30a14e;
+    --contribution-4: #216e39;
 }
 
 [data-theme="dark"] {
@@ -25,6 +30,11 @@
     --orange: #f6bd70;
     --nav: #0b1020;
     --shadow: 0 12px 35px rgba(0, 0, 0, .24);
+    --contribution-0: #161b22;
+    --contribution-1: #0e4429;
+    --contribution-2: #006d32;
+    --contribution-3: #26a641;
+    --contribution-4: #39d353;
 }
 
 .landing {

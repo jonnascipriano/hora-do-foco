@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { auth } from "../../firebase";
 import {
     deleteCalendarAttachment,
     getCalendarAttachmentBlob,
@@ -8,15 +9,31 @@ import {
     saveCalendarEntry,
     uploadCalendarAttachment,
 } from "../../services/calendarApi";
+import { getStudySessions } from "../../services/studyData";
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const contributionWeekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
+const CONTRIBUTION_LEVELS = [
+    { seconds: 0, level: 0 },
+    { seconds: 1, level: 1 },
+    { seconds: 30 * 60, level: 2 },
+    { seconds: 60 * 60, level: 3 },
+    { seconds: 2 * 60 * 60, level: 4 },
+];
 
 function dateKey(date) {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
+}
+
+function formatStudyDuration(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) return `${hours}h ${minutes}min`;
+    return `${minutes} min`;
 }
 
 function sameMonth(left, right) {
@@ -33,6 +50,8 @@ export default function StudyCalendar() {
     const [attachments, setAttachments] = useState([]);
     const [imagePreviews, setImagePreviews] = useState({});
     const [monthSummary, setMonthSummary] = useState({});
+    const [studyByDay, setStudyByDay] = useState({});
+    const [contributionState, setContributionState] = useState({ loading: true, error: "" });
     const [loadedKey, setLoadedKey] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(null);
@@ -40,6 +59,36 @@ export default function StudyCalendar() {
     const [notice, setNotice] = useState("");
     const selectedKey = dateKey(selectedDate);
     const monthKey = dateKey(month).slice(0, 7);
+    const contributionWeeks = useMemo(() => {
+        const currentWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        currentWeek.setDate(currentWeek.getDate() - ((currentWeek.getDay() + 6) % 7));
+        currentWeek.setDate(currentWeek.getDate() - 52 * 7);
+
+        return Array.from({ length: 53 }, (_, weekIndex) => {
+            const weekStart = new Date(currentWeek);
+            weekStart.setDate(weekStart.getDate() + weekIndex * 7);
+            return Array.from({ length: 7 }, (_, dayIndex) => {
+                const date = new Date(weekStart);
+                date.setDate(date.getDate() + dayIndex);
+                return date;
+            });
+        });
+    }, [today]);
+    const contributionMonths = useMemo(() => {
+        const months = [];
+        contributionWeeks.forEach((week, weekIndex) => {
+            const firstOfMonth = week.find((date) => date.getDate() === 1);
+            if (firstOfMonth) {
+                months.push({
+                    weekIndex,
+                    label: firstOfMonth.toLocaleDateString("pt-BR", { month: "short" }).replace(".", ""),
+                });
+            }
+        });
+        return months;
+    }, [contributionWeeks]);
+    const studiedDays = Object.values(studyByDay).filter((seconds) => seconds > 0).length;
+    const totalContributionSeconds = Object.values(studyByDay).reduce((total, seconds) => total + seconds, 0);
     const imageAttachmentIds = attachments
         .filter((attachment) => attachment.contentType?.startsWith("image/"))
         .map((attachment) => attachment.id)
@@ -78,6 +127,49 @@ export default function StudyCalendar() {
             });
         return () => { isActive = false; };
     }, [monthKey]);
+
+    useEffect(() => {
+        let isActive = true;
+        let requestId = 0;
+        const start = new Date(contributionWeeks[0][0]);
+        const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+        async function loadStudyContributions() {
+            const currentRequestId = ++requestId;
+            setContributionState((current) => ({ ...current, loading: true, error: "" }));
+            try {
+                const sessions = await getStudySessions(auth.currentUser.uid, start, end);
+                if (!isActive || currentRequestId !== requestId) return;
+
+                const totals = {};
+                sessions.forEach((session) => {
+                    const endedAt = session.endedAt?.toDate
+                        ? session.endedAt.toDate()
+                        : new Date(session.endedAt);
+                    if (!Number.isFinite(endedAt.getTime()) || !Number.isFinite(session.elapsedSeconds)) return;
+                    const key = dateKey(endedAt);
+                    totals[key] = (totals[key] || 0) + Math.max(0, session.elapsedSeconds);
+                });
+                setStudyByDay(totals);
+                setContributionState({ loading: false, error: "" });
+            } catch (loadError) {
+                console.error("Não foi possível carregar o mapa de estudos.", loadError);
+                if (isActive && currentRequestId === requestId) {
+                    setContributionState({
+                        loading: false,
+                        error: "Não foi possível carregar seu mapa de estudos.",
+                    });
+                }
+            }
+        }
+
+        loadStudyContributions();
+        window.addEventListener("study-session-saved", loadStudyContributions);
+        return () => {
+            isActive = false;
+            window.removeEventListener("study-session-saved", loadStudyContributions);
+        };
+    }, [contributionWeeks, today]);
 
     useEffect(() => {
         let isActive = true;
@@ -284,6 +376,96 @@ export default function StudyCalendar() {
             <p className="text-sm font-bold text-(--purple)">Seu diário</p>
             <h1 className="mt-1 text-3xl font-extrabold tracking-tight">Calendário de estudos</h1>
             <p className="mt-2 text-sm text-(--muted)">Escolha um dia até hoje para guardar anotações e arquivos da sua preparação.</p>
+
+            <section
+                aria-labelledby="study-contributions-title"
+                className="mt-6 rounded-2xl border border-(--line) bg-(--card) p-4 sm:p-6"
+            >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <h2 id="study-contributions-title" className="text-lg font-extrabold">Seus estudos ao longo do ano</h2>
+                    <p className="text-sm text-(--muted)">
+                        {contributionState.loading
+                            ? "Carregando atividade..."
+                            : `${studiedDays} ${studiedDays === 1 ? "dia estudado" : "dias estudados"} · ${formatStudyDuration(totalContributionSeconds)} no total`}
+                    </p>
+                </div>
+                {contributionState.error ? (
+                    <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">
+                        {contributionState.error}
+                    </p>
+                ) : (
+                    <div className="mt-4 overflow-x-auto pb-2">
+                        <div className="flex w-max min-w-full gap-2">
+                            <div
+                                aria-hidden="true"
+                                className="grid shrink-0 grid-rows-[16px_repeat(7,11px)] gap-y-[3px] pt-0.5 text-[10px] leading-[11px] text-(--muted)"
+                            >
+                                {contributionWeekdays.map((day, index) => (
+                                    <span key={day} style={{ gridRow: index + 2 }}>
+                                        {index % 2 === 0 && index < 6 && day}
+                                    </span>
+                                ))}
+                            </div>
+                            <div
+                                role="img"
+                                aria-label="Mapa de atividade de estudos dos últimos doze meses"
+                                className="grid"
+                                style={{
+                                    gridTemplateColumns: "repeat(53, 11px)",
+                                    gridTemplateRows: "16px repeat(7, 11px)",
+                                    columnGap: "3px",
+                                    rowGap: "3px",
+                                }}
+                            >
+                                {contributionMonths.map(({ weekIndex, label }) => (
+                                    <span
+                                        key={`${weekIndex}-${label}`}
+                                        className="text-[10px] leading-4 capitalize text-(--muted)"
+                                        style={{ gridColumn: weekIndex + 1, gridRow: 1 }}
+                                    >
+                                        {label}
+                                    </span>
+                                ))}
+                                {contributionWeeks.flatMap((week, weekIndex) => week.map((date, dayIndex) => {
+                                    const key = dateKey(date);
+                                    const seconds = studyByDay[key] || 0;
+                                    const level = [...CONTRIBUTION_LEVELS]
+                                        .reverse()
+                                        .find((threshold) => seconds >= threshold.seconds).level;
+                                    const duration = seconds > 0
+                                        ? formatStudyDuration(seconds)
+                                        : "Nenhum estudo registrado";
+                                    return (
+                                        <span
+                                            key={key}
+                                            title={`${date.toLocaleDateString("pt-BR", { dateStyle: "long" })}: ${duration}`}
+                                            aria-label={`${date.toLocaleDateString("pt-BR", { dateStyle: "long" })}: ${duration}`}
+                                            className="rounded-[2px]"
+                                            style={{
+                                                gridColumn: weekIndex + 1,
+                                                gridRow: dayIndex + 2,
+                                                backgroundColor: `var(--contribution-${level})`,
+                                            }}
+                                        />
+                                    );
+                                }))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+                <div className="mt-2 flex items-center justify-end gap-1.5 text-xs text-(--muted)" aria-label="Legenda: menos para mais tempo de estudo">
+                    <span className="mr-1">Menos</span>
+                    {[0, 1, 2, 3, 4].map((level) => (
+                        <span
+                            key={level}
+                            aria-hidden="true"
+                            className="h-[11px] w-[11px] rounded-[2px]"
+                            style={{ backgroundColor: `var(--contribution-${level})` }}
+                        />
+                    ))}
+                    <span className="ml-1">Mais</span>
+                </div>
+            </section>
 
             <div className="mt-6 grid items-start gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
                 <section className="rounded-2xl border border-(--line) bg-(--card) p-4 sm:p-6">
