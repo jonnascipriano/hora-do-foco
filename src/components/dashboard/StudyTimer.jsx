@@ -34,10 +34,14 @@ export default function StudyTimer({ compact = false }) {
     const focusSecondsRef = useRef(0);
     const freeSecondsRef = useRef(0);
     const remainingSecondsRef = useRef(25 * 60);
+    const phaseRef = useRef("focus");
+    const lastTickAtRef = useRef(null);
+    const elapsedRemainderMsRef = useRef(0);
     const focusStartedAtRef = useRef(null);
     const freeStartedAtRef = useRef(null);
     const audioContextRef = useRef(null);
     const lastCompletionAtRef = useRef(0);
+    const originalTitleRef = useRef(document.title);
 
     const resolvedSubject = subject === "Outros" ? customSubject.trim() : subject;
     const timerSeconds = mode === "free" ? freeSeconds : remainingSeconds;
@@ -98,6 +102,79 @@ export default function StudyTimer({ compact = false }) {
         }
     }, []);
 
+    const advanceTimer = useCallback(() => {
+        const now = Date.now();
+        if (lastTickAtRef.current === null) {
+            lastTickAtRef.current = now;
+            return;
+        }
+
+        const elapsedMs = Math.max(0, now - lastTickAtRef.current) + elapsedRemainderMsRef.current;
+        lastTickAtRef.current = now;
+        const elapsedSeconds = Math.floor(elapsedMs / 1000);
+        elapsedRemainderMsRef.current = elapsedMs % 1000;
+        if (elapsedSeconds === 0) return;
+
+        if (mode === "free") {
+            freeSecondsRef.current += elapsedSeconds;
+            setFreeSeconds(freeSecondsRef.current);
+            return;
+        }
+
+        let secondsToApply = elapsedSeconds;
+        let nextPhase = phaseRef.current;
+        let nextRemaining = remainingSecondsRef.current;
+        let nextFocusSeconds = focusSecondsRef.current;
+        let completedPhase = "";
+
+        while (secondsToApply > 0) {
+            const consumedSeconds = Math.min(secondsToApply, nextRemaining);
+            secondsToApply -= consumedSeconds;
+            nextRemaining -= consumedSeconds;
+            if (nextPhase === "focus") nextFocusSeconds += consumedSeconds;
+            if (nextRemaining > 0) break;
+
+            const transitionAt = new Date(now - secondsToApply * 1000);
+            if (nextPhase === "focus") {
+                completedPhase = "focus";
+                lastCompletionAtRef.current = transitionAt.getTime();
+                const startedAt = focusStartedAtRef.current
+                    || new Date(transitionAt.getTime() - nextFocusSeconds * 1000);
+                setIsSaving(true);
+                recordSession(nextFocusSeconds, startedAt, transitionAt, "pomodoro")
+                    .then(() => setNotice(`Sessão de ${resolvedSubject} salva.`))
+                    .catch(() => setError("O ciclo terminou, mas não foi possível salvar a sessão. Confira sua conexão e as regras do Firestore."))
+                    .finally(() => setIsSaving(false));
+                nextFocusSeconds = 0;
+                focusStartedAtRef.current = null;
+                nextPhase = "break";
+                nextRemaining = breakMinutes * 60;
+            } else {
+                completedPhase = "break";
+                lastCompletionAtRef.current = transitionAt.getTime();
+                nextPhase = "focus";
+                nextFocusSeconds = 0;
+                focusStartedAtRef.current = transitionAt;
+                nextRemaining = studyMinutes * 60;
+            }
+        }
+
+        phaseRef.current = nextPhase;
+        remainingSecondsRef.current = nextRemaining;
+        focusSecondsRef.current = nextFocusSeconds;
+        setPhase(nextPhase);
+        setRemainingSeconds(nextRemaining);
+        setFocusSeconds(nextFocusSeconds);
+
+        if (completedPhase === "focus") {
+            playCompletionSound();
+            void notify("Fim do foco", "Seu ciclo de estudo terminou. Hora da pausa.");
+        } else if (completedPhase === "break") {
+            playCompletionSound();
+            void notify("Fim da pausa", "Sua pausa terminou. Hora de voltar aos estudos.");
+        }
+    }, [breakMinutes, mode, notify, playCompletionSound, recordSession, resolvedSubject, studyMinutes]);
+
     const enableNotifications = useCallback(async () => {
         if (!("Notification" in window)) {
             setNotificationPermission("unsupported");
@@ -120,55 +197,26 @@ export default function StudyTimer({ compact = false }) {
 
     useEffect(() => {
         if (!isRunning) return undefined;
-        const interval = window.setInterval(() => {
-            if (mode === "free") {
-                freeSecondsRef.current += 1;
-                setFreeSeconds(freeSecondsRef.current);
-                return;
-            }
+        const interval = window.setInterval(advanceTimer, 1000);
+        document.addEventListener("visibilitychange", advanceTimer);
+        return () => {
+            window.clearInterval(interval);
+            document.removeEventListener("visibilitychange", advanceTimer);
+        };
+    }, [advanceTimer, isRunning]);
 
-            if (phase === "focus") {
-                focusSecondsRef.current += 1;
-                setFocusSeconds(focusSecondsRef.current);
-            }
+    useEffect(() => {
+        if (!isRunning) {
+            document.title = originalTitleRef.current;
+            return;
+        }
+        const activity = mode === "free" ? "Contador livre" : phase === "break" ? "Pausa" : "Foco";
+        document.title = `${formatClock(timerSeconds)} · ${activity} | Hora do Foco`;
+    }, [isRunning, mode, phase, timerSeconds]);
 
-            const nextRemaining = remainingSecondsRef.current - 1;
-            remainingSecondsRef.current = nextRemaining;
-            setRemainingSeconds(Math.max(0, nextRemaining));
-            if (nextRemaining > 0) return;
-
-            if (phase === "focus") {
-                lastCompletionAtRef.current = Date.now();
-                playCompletionSound();
-                void notify("Fim do foco", "Seu ciclo de estudo terminou. Hora da pausa.");
-                const seconds = focusSecondsRef.current;
-                const endedAt = new Date();
-                const startedAt = focusStartedAtRef.current || new Date(endedAt.getTime() - seconds * 1000);
-                setIsSaving(true);
-                recordSession(seconds, startedAt, endedAt, "pomodoro")
-                    .then(() => setNotice(`Sessão de ${resolvedSubject} salva.`))
-                    .catch(() => setError("O ciclo terminou, mas não foi possível salvar a sessão. Confira sua conexão e as regras do Firestore."))
-                    .finally(() => setIsSaving(false));
-                focusSecondsRef.current = 0;
-                setFocusSeconds(0);
-                focusStartedAtRef.current = null;
-                remainingSecondsRef.current = breakMinutes * 60;
-                setRemainingSeconds(remainingSecondsRef.current);
-                setPhase("break");
-            } else {
-                lastCompletionAtRef.current = Date.now();
-                playCompletionSound();
-                void notify("Fim da pausa", "Sua pausa terminou. Hora de voltar aos estudos.");
-                focusStartedAtRef.current = new Date();
-                focusSecondsRef.current = 0;
-                setFocusSeconds(0);
-                remainingSecondsRef.current = studyMinutes * 60;
-                setRemainingSeconds(remainingSecondsRef.current);
-                setPhase("focus");
-            }
-        }, 1000);
-        return () => window.clearInterval(interval);
-    }, [isRunning, mode, phase, breakMinutes, studyMinutes, resolvedSubject, recordSession, notify, playCompletionSound]);
+    useEffect(() => () => {
+        document.title = originalTitleRef.current;
+    }, []);
 
     useEffect(() => {
         if (!isRunning || notificationPermission !== "granted") return undefined;
@@ -266,8 +314,10 @@ export default function StudyTimer({ compact = false }) {
         setError("");
         setNotice("");
         setPhase("focus");
+        phaseRef.current = "focus";
         focusSecondsRef.current = 0;
         freeSecondsRef.current = 0;
+        elapsedRemainderMsRef.current = 0;
         setFocusSeconds(0);
         setFreeSeconds(0);
         remainingSecondsRef.current = studyMinutes * 60;
@@ -296,10 +346,12 @@ export default function StudyTimer({ compact = false }) {
         }
         if (mode === "free" && freeSecondsRef.current === 0) freeStartedAtRef.current = new Date();
         if (mode === "pomodoro" && phase === "focus" && focusSecondsRef.current === 0) focusStartedAtRef.current = new Date();
+        lastTickAtRef.current = Date.now();
         setIsRunning(true);
     }
 
     async function stopTimer() {
+        if (isRunning) advanceTimer();
         setIsRunning(false);
         setError("");
         const now = new Date();
@@ -319,13 +371,21 @@ export default function StudyTimer({ compact = false }) {
         }
         focusSecondsRef.current = 0;
         freeSecondsRef.current = 0;
+        elapsedRemainderMsRef.current = 0;
+        lastTickAtRef.current = null;
         setFocusSeconds(0);
         setFreeSeconds(0);
         focusStartedAtRef.current = null;
         freeStartedAtRef.current = null;
         setPhase("focus");
+        phaseRef.current = "focus";
         remainingSecondsRef.current = studyMinutes * 60;
         setRemainingSeconds(remainingSecondsRef.current);
+    }
+
+    function pauseTimer() {
+        advanceTimer();
+        setIsRunning(false);
     }
 
     function updateDuration(value, setter, isBreak = false) {
@@ -474,7 +534,7 @@ export default function StudyTimer({ compact = false }) {
                             {mode === "free" && freeSeconds > 0 ? "Retomar" : "Começar a estudar"}
                         </button>
                     ) : (
-                        <button type="button" onClick={() => setIsRunning(false)} className="rounded-xl border border-(--line) bg-(--card) px-6 py-3 text-sm font-bold">
+                        <button type="button" onClick={pauseTimer} className="rounded-xl border border-(--line) bg-(--card) px-6 py-3 text-sm font-bold">
                             Pausar
                         </button>
                     )}
