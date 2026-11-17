@@ -40,7 +40,6 @@ export default function StudyTimer({ compact = false }) {
     const focusStartedAtRef = useRef(null);
     const freeStartedAtRef = useRef(null);
     const audioContextRef = useRef(null);
-    const lastCompletionAtRef = useRef(0);
     const originalTitleRef = useRef(document.title);
 
     const resolvedSubject = subject === "Outros" ? customSubject.trim() : subject;
@@ -137,7 +136,6 @@ export default function StudyTimer({ compact = false }) {
             const transitionAt = new Date(now - secondsToApply * 1000);
             if (nextPhase === "focus") {
                 completedPhase = "focus";
-                lastCompletionAtRef.current = transitionAt.getTime();
                 const startedAt = focusStartedAtRef.current
                     || new Date(transitionAt.getTime() - nextFocusSeconds * 1000);
                 setIsSaving(true);
@@ -151,7 +149,6 @@ export default function StudyTimer({ compact = false }) {
                 nextRemaining = breakMinutes * 60;
             } else {
                 completedPhase = "break";
-                lastCompletionAtRef.current = transitionAt.getTime();
                 nextPhase = "focus";
                 nextFocusSeconds = 0;
                 focusStartedAtRef.current = transitionAt;
@@ -222,14 +219,10 @@ export default function StudyTimer({ compact = false }) {
         if (!isRunning || notificationPermission !== "granted") return undefined;
 
         const updateTimerNotification = () => {
-            if (!document.hidden || Date.now() - lastCompletionAtRef.current < 60_000) return;
-            const isBreak = mode === "pomodoro" && phase === "break";
-            const title = mode === "free"
-                ? "Contador livre em andamento"
-                : isBreak ? "Pausa em andamento" : "Foco em andamento";
-            const body = mode === "free"
-                ? `${formatClock(freeSecondsRef.current)} estudados`
-                : `${formatClock(remainingSecondsRef.current)} restantes`;
+            if (!document.hidden || mode === "free") return;
+            const isBreak = phase === "break";
+            const title = isBreak ? "Pausa em andamento" : "Foco em andamento";
+            const body = `${formatClock(remainingSecondsRef.current)} restantes`;
             void notify(title, body, true);
         };
         const closeTimerNotification = () => {
@@ -567,7 +560,7 @@ export default function StudyTimer({ compact = false }) {
                 )}
                 {notificationPermission === "granted" && (
                     <p className="mt-5 text-center text-xs text-(--muted)">
-                        Notificações ativadas: o timer aparece em segundo plano e avisa quando o ciclo terminar.
+                        Notificações ativadas para avisar ao final dos ciclos do Pomodoro.
                     </p>
                 )}
                 {notificationPermission === "unsupported" && (
